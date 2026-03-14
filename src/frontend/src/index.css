@@ -1,0 +1,136 @@
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0.1 0.04 320;
+    --foreground: 0.96 0.01 320;
+    --card: 0.16 0.05 340;
+    --card-foreground: 0.96 0.01 320;
+    --popover: 0.16 0.05 340;
+    --popover-foreground: 0.96 0.01 320;
+    --primary: 0.65 0.22 10;
+    --primary-foreground: 0.99 0.002 0;
+    --secondary: 0.2 0.05 330;
+    --secondary-foreground: 0.85 0.02 320;
+    --muted: 0.18 0.04 330;
+    --muted-foreground: 0.55 0.04 330;
+    --accent: 0.22 0.06 330;
+    --accent-foreground: 0.96 0.01 320;
+    --destructive: 0.55 0.22 25;
+    --destructive-foreground: 0.99 0.002 0;
+    --border: 0.24 0.05 330;
+    --input: 0.2 0.04 330;
+    --ring: 0.65 0.22 10;
+    --radius: 0.75rem;
+    --chart-1: 0.65 0.22 10;
+    --chart-2: 0.55 0.22 320;
+    --chart-3: 0.6 0.18 350;
+    --chart-4: 0.7 0.15 60;
+    --chart-5: 0.5 0.2 280;
+    --sidebar: 0.12 0.04 320;
+    --sidebar-foreground: 0.96 0.01 320;
+    --sidebar-primary: 0.65 0.22 10;
+    --sidebar-primary-foreground: 0.99 0.002 0;
+    --sidebar-accent: 0.2 0.05 330;
+    --sidebar-accent-foreground: 0.96 0.01 320;
+    --sidebar-border: 0.24 0.05 330;
+    --sidebar-ring: 0.65 0.22 10;
+  }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-body;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
+}
+
+@layer utilities {
+  .text-gradient-love {
+    background: linear-gradient(135deg, #f43f5e, #ec4899, #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .gradient-love {
+    background: linear-gradient(135deg, #e11d48, #db2777, #9333ea);
+  }
+  .story-ring {
+    background: linear-gradient(135deg, #f43f5e, #ec4899, #a855f7);
+    padding: 2.5px;
+    border-radius: 9999px;
+  }
+  .story-ring-inner {
+    background: oklch(0.1 0.04 320);
+    border-radius: 9999px;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .msg-bubble-sent {
+    background: linear-gradient(135deg, #e11d48, #db2777);
+    border-radius: 18px 18px 4px 18px;
+  }
+  .msg-bubble-received {
+    background: oklch(0.2 0.05 330);
+    border-radius: 18px 18px 18px 4px;
+  }
+  .btn-action {
+    @apply rounded-full flex items-center justify-center transition-all duration-200 active:scale-95;
+    background: oklch(0.18 0.05 330 / 0.8);
+    backdrop-filter: blur(8px);
+    border: 1px solid oklch(0.3 0.06 330 / 0.4);
+  }
+  .btn-action-primary {
+    background: linear-gradient(135deg, #e11d48, #db2777) !important;
+    box-shadow: 0 4px 20px oklch(0.65 0.22 10 / 0.45);
+    border: none !important;
+  }
+  .pulse-ring {
+    animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  }
+  .pulse-ring-2 {
+    animation: pulse-ring-2 2s cubic-bezier(0.215, 0.61, 0.355, 1) 0.3s infinite;
+  }
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.9);
+      opacity: 0.8;
+    }
+    50% {
+      transform: scale(1.05);
+      opacity: 0.4;
+    }
+    100% {
+      transform: scale(0.9);
+      opacity: 0.8;
+    }
+  }
+  @keyframes pulse-ring-2 {
+    0% {
+      transform: scale(0.85);
+      opacity: 0.6;
+    }
+    50% {
+      transform: scale(1.1);
+      opacity: 0.2;
+    }
+    100% {
+      transform: scale(0.85);
+      opacity: 0.6;
+    }
+  }
+}
