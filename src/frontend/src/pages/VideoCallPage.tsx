@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CallSignalType, CallStatus, CallType, type Profile } from "../backend";
-import { useActor } from "../hooks/useActor";
+import { useAppActor as useActor } from "../hooks/useAppActor";
 import { useLogCall, useStoreCallSignal } from "../hooks/useQueries";
 
 interface Props {

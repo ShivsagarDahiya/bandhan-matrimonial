@@ -69,9 +69,12 @@ export default function LoginPage() {
     setError("");
     if (selectedInterests.length < 3)
       return setError("Pick at least 3 interests");
-    const users: Record<string, unknown>[] = JSON.parse(
-      localStorage.getItem("bandhan_users") || "[]",
-    );
+    let users: Record<string, unknown>[] = [];
+    try {
+      users = JSON.parse(localStorage.getItem("bandhan_users") || "[]");
+    } catch {
+      localStorage.removeItem("bandhan_users");
+    }
     const exists = users.find(
       (u: any) => u.emailOrPhone === formData.emailOrPhone,
     );
@@ -94,9 +97,12 @@ export default function LoginPage() {
     setError("");
     if (!signInData.emailOrPhone.trim() || !signInData.password)
       return setError("All fields required");
-    const users: any[] = JSON.parse(
-      localStorage.getItem("bandhan_users") || "[]",
-    );
+    let users: any[] = [];
+    try {
+      users = JSON.parse(localStorage.getItem("bandhan_users") || "[]");
+    } catch {
+      localStorage.removeItem("bandhan_users");
+    }
     const user = users.find(
       (u) =>
         u.emailOrPhone === signInData.emailOrPhone &&
@@ -534,15 +540,7 @@ export default function LoginPage() {
 
         <footer className="text-center pt-6">
           <p className="text-xs text-white/25">
-            © {new Date().getFullYear()}. Built with ❤️ using{" "}
-            <a
-              href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-white/50 transition-colors"
-            >
-              caffeine.ai
-            </a>
+            © 2026. I would ❤️ using Bandhan
           </p>
         </footer>
       </div>

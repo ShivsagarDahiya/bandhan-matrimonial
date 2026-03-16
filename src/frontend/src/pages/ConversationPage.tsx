@@ -1,18 +1,32 @@
 import { Input } from "@/components/ui/input";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   ArrowLeft,
   Check,
   Edit2,
   Phone,
+  Pin,
   Reply,
   Send,
   Smile,
+  Star,
   Trash2,
   Video,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { Message, Profile } from "../backend";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MessageWithMeta, Profile } from "../backend";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   useDeleteMessage,
@@ -20,19 +34,37 @@ import {
   useMarkMessageRead,
   useMessages,
   useReactToMessage,
+  useSendGiftBackend,
   useSendMessage,
   useSetTyping,
   useTypingStatus,
 } from "../hooks/useQueries";
+import { useStarredMessages } from "../hooks/useStarredMessages";
 
-// Extended message type with fields added in backend version 9
-type ExtMessage = Message & { reaction?: string; isDeleted?: boolean };
+type ExtMessage = MessageWithMeta;
+
+interface GiftMessage {
+  id: string;
+  gift: string;
+  giftEmoji: string;
+  text: string;
+  timestamp: number;
+  isMine: true;
+}
+
+const GIFTS = [
+  { name: "Rose", emoji: "🌹", points: 10 },
+  { name: "Diamond", emoji: "💎", points: 50 },
+  { name: "Chocolate", emoji: "🍫", points: 20 },
+  { name: "Love Letter", emoji: "💌", points: 5 },
+];
 
 interface Props {
   profile: Profile;
   onBack: () => void;
   onVoiceCall?: () => void;
   onVideoCall?: () => void;
+  readReceiptsEnabled?: boolean;
 }
 
 interface ContextMenu {
@@ -46,14 +78,87 @@ interface ContextMenu {
 
 type ReplyTo = { id: string; text: string; senderName: string };
 
+type MsgStatus = "sent" | "delivered" | "seen";
+
+interface MsgStatusEntry {
+  status: MsgStatus;
+  seenAt?: number;
+}
+
 const REACTIONS = ["❤️", "😂", "😮", "👍", "😢"];
+
+function matchedAgoLabel(createdAt: bigint): string {
+  const nowMs = Date.now();
+  const createdMs = Number(createdAt) / 1_000_000;
+  const diffMs = nowMs - createdMs;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Matched today";
+  if (diffDays === 1) return "Matched yesterday";
+  return `Matched ${diffDays} days ago`;
+}
+
+/** Checkmark receipt icon for sender messages */
+function MsgReceipt({ entry }: { entry?: MsgStatusEntry }) {
+  const status = entry?.status ?? "sent";
+  if (status === "seen") {
+    const seenLabel = entry?.seenAt
+      ? `Seen at ${new Date(entry.seenAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+      : "Seen";
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="flex items-center cursor-pointer"
+            data-ocid="conversation.tooltip"
+            aria-label={seenLabel}
+          >
+            <Check className="w-3 h-3" style={{ color: "#3b82f6" }} />
+            <Check className="w-3 h-3 -ml-1.5" style={{ color: "#3b82f6" }} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent
+          side="top"
+          className="text-xs py-1 px-2"
+          style={{
+            background: "oklch(0.14 0.06 330)",
+            border: "1px solid oklch(0.28 0.07 330)",
+            color: "white",
+          }}
+        >
+          {seenLabel}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+  if (status === "delivered") {
+    return (
+      <span className="flex items-center">
+        <Check className="w-3 h-3 text-white/50" />
+        <Check className="w-3 h-3 -ml-1.5 text-white/50" />
+      </span>
+    );
+  }
+  // sent
+  return <Check className="w-3 h-3 text-white/30" />;
+}
 
 export default function ConversationPage({
   profile,
   onBack,
   onVoiceCall,
   onVideoCall,
+  readReceiptsEnabled,
 }: Props) {
+  // Read receipt privacy: default from prop, fallback to localStorage chat_settings
+  const readReceiptsOn =
+    readReceiptsEnabled ??
+    (() => {
+      try {
+        const raw = localStorage.getItem("chat_settings");
+        if (raw) return JSON.parse(raw).readReceipts !== false;
+      } catch {}
+      return true;
+    })();
   const { identity } = useInternetIdentity();
   const myPrincipal = identity?.getPrincipal().toString();
   const { data: rawMessages = [] } = useMessages(profile.userId, true);
@@ -61,39 +166,59 @@ export default function ConversationPage({
   const sendMessage = useSendMessage();
   const markRead = useMarkMessageRead();
   const setTypingMutation = useSetTyping();
-  const { data: isTyping } = useTypingStatus(profile.userId);
+  const { data: remoteIsTyping } = useTypingStatus(profile.userId);
   const reactToMessage = useReactToMessage();
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
+  const sendGiftBackend = useSendGiftBackend();
+  const { isStarred, toggleStar } = useStarredMessages();
+
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const markedReadRef = useRef<Set<string>>(new Set());
+  const containerRef = useRef<HTMLDivElement>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Chat enhancement state (optimistic)
+  // Local typing state — true while I am actively typing (for immediate UI feedback)
+  const [selfIsTyping, setSelfIsTyping] = useState(false);
+  // Combine remote backend typing status with local immediate state
+  const showTypingBubble = remoteIsTyping === true;
+
+  // Delivery receipt map: msgId -> {status, seenAt}
+  const [msgStatusMap, setMsgStatusMap] = useState<Map<string, MsgStatusEntry>>(
+    new Map(),
+  );
+
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
-  // Local optimistic reactions — local takes precedence over backend
   const [localReactions, setLocalReactions] = useState<Map<string, string>>(
     new Map(),
   );
-  // Local optimistic deleted ids
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [pinnedMessage, setPinnedMessage] = useState<{
+    id: string;
+    text: string;
+  } | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
-  // Local optimistic edits
   const [localEdits, setLocalEdits] = useState<Map<string, string>>(new Map());
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Gift state
+  const [showGiftPicker, setShowGiftPicker] = useState(false);
+  const [giftMessages, setGiftMessages] = useState<GiftMessage[]>([]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: ref scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, giftMessages]);
 
-  // Mark incoming messages as read
+  // Mark incoming messages as read + update delivery status for outgoing msgs
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional stable refs
   useEffect(() => {
+    const updates = new Map<string, MsgStatusEntry>();
     for (const msg of messages) {
       const key = msg.id.toString();
+      // Mark incoming unread msgs as read
       if (
         msg.toUserId.toString() === myPrincipal &&
         !msg.read &&
@@ -102,10 +227,26 @@ export default function ConversationPage({
         markedReadRef.current.add(key);
         markRead.mutate(msg.id);
       }
+      // Update delivery status for my outgoing messages
+      if (msg.fromUserId.toString() === myPrincipal) {
+        const existing = msgStatusMap.get(key);
+        if (msg.read && existing?.status !== "seen") {
+          updates.set(key, { status: "seen", seenAt: Date.now() });
+        } else if (!msg.read && !existing) {
+          updates.set(key, { status: "delivered" });
+        }
+      }
     }
-  }, [messages, myPrincipal, markRead]);
+    if (updates.size > 0) {
+      setMsgStatusMap((prev) => {
+        const next = new Map(prev);
+        for (const [k, v] of updates) next.set(k, v);
+        return next;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, myPrincipal]);
 
-  // Dismiss context menu on outside click
   useEffect(() => {
     if (!contextMenu) return;
     const handler = () => setContextMenu(null);
@@ -116,11 +257,16 @@ export default function ConversationPage({
   const handleTyping = useCallback(
     (val: string) => {
       setInputValue(val);
+
+      // Immediately show typing state locally
+      setSelfIsTyping(true);
       setTypingMutation.mutate({ toUserId: profile.userId, isTyping: true });
+
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       typingTimerRef.current = setTimeout(() => {
+        setSelfIsTyping(false);
         setTypingMutation.mutate({ toUserId: profile.userId, isTyping: false });
-      }, 3000);
+      }, 2000);
     },
     [profile.userId, setTypingMutation],
   );
@@ -129,10 +275,13 @@ export default function ConversationPage({
     const rawText = inputValue.trim();
     if (!rawText) return;
 
+    // Stop typing indicator immediately on send
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    setSelfIsTyping(false);
+    setTypingMutation.mutate({ toUserId: profile.userId, isTyping: false });
+
     if (editingMsgId) {
-      // Optimistic local edit
       setLocalEdits((prev) => new Map(prev).set(editingMsgId, rawText));
-      // Persist to backend
       const idBigint = messages.find(
         (m) => m.id.toString() === editingMsgId,
       )?.id;
@@ -155,11 +304,34 @@ export default function ConversationPage({
 
     setInputValue("");
     setReplyTo(null);
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    setTypingMutation.mutate({ toUserId: profile.userId, isTyping: false });
     try {
-      await sendMessage.mutateAsync({ toUserId: profile.userId, text });
+      await sendMessage.mutateAsync({
+        toUserId: profile.userId,
+        text,
+      });
     } catch {}
+  };
+
+  const handleSendGift = (gift: {
+    name: string;
+    emoji: string;
+    points: number;
+  }) => {
+    const giftMsg: GiftMessage = {
+      id: `gift_${Date.now()}`,
+      gift: gift.name,
+      giftEmoji: gift.emoji,
+      text: `sent you a ${gift.emoji} ${gift.name}!`,
+      timestamp: Date.now(),
+      isMine: true,
+    };
+    setGiftMessages((prev) => [...prev, giftMsg]);
+    setShowGiftPicker(false);
+    sendGiftBackend.mutate({
+      toUserId: profile.userId,
+      giftName: gift.name,
+      giftEmoji: gift.emoji,
+    });
   };
 
   const openContextMenu = (
@@ -208,9 +380,7 @@ export default function ConversationPage({
 
   const handleReact = (emoji: string) => {
     if (!contextMenu) return;
-    // Optimistic update
     setLocalReactions((prev) => new Map(prev).set(contextMenu.msgId, emoji));
-    // Persist to backend
     reactToMessage.mutate({ messageId: contextMenu.msgIdBigint, emoji });
     setContextMenu(null);
   };
@@ -236,139 +406,338 @@ export default function ConversationPage({
 
   const handleDelete = () => {
     if (!contextMenu) return;
-    // Optimistic update
     setDeletedIds((prev) => new Set(prev).add(contextMenu.msgId));
-    // Persist to backend
     deleteMessage.mutate(contextMenu.msgIdBigint);
     setContextMenu(null);
   };
 
-  const visibleMessages = messages.filter(
-    (m) => !deletedIds.has(m.id.toString()) && !m.isDeleted,
+  const handlePin = () => {
+    if (!contextMenu) return;
+    const text = localEdits.get(contextMenu.msgId) ?? contextMenu.msgText;
+    setPinnedMessage({ id: contextMenu.msgId, text });
+    setContextMenu(null);
+  };
+
+  const handleStar = () => {
+    if (!contextMenu) return;
+    const text = localEdits.get(contextMenu.msgId) ?? contextMenu.msgText;
+    toggleStar({
+      id: contextMenu.msgId,
+      conversationId: profile.userId.toString(),
+      contactName: profile.name,
+      contactAvatar: profile.photoUrl ?? "",
+      text,
+      timestamp: Date.now(),
+      senderId: contextMenu.isMine ? "me" : profile.userId.toString(),
+    });
+    setContextMenu(null);
+  };
+
+  const visibleMessages = useMemo(
+    () =>
+      messages.filter((m) => !deletedIds.has(m.id.toString()) && !m.isDeleted),
+    [messages, deletedIds],
   );
 
+  // Void to suppress unused warning
+  void selfIsTyping;
+
   return (
-    <div
-      ref={containerRef}
-      className="flex flex-col h-screen relative"
-      style={{ background: "oklch(0.08 0.03 300)" }}
-    >
-      {/* Header */}
+    <TooltipProvider delayDuration={200}>
       <div
-        className="flex items-center gap-3 px-4 pt-12 pb-4 flex-shrink-0"
-        style={{
-          background:
-            "linear-gradient(180deg,oklch(0.14 0.07 340) 0%,oklch(0.1 0.04 320) 100%)",
-          borderBottom: "1px solid oklch(0.22 0.06 330 / 0.5)",
-        }}
+        ref={containerRef}
+        className="flex flex-col h-screen relative"
+        style={{ background: "oklch(0.08 0.03 300)" }}
       >
-        <button
-          type="button"
-          onClick={onBack}
-          data-ocid="conversation.button"
-          className="w-9 h-9 rounded-full flex items-center justify-center"
-          style={{ background: "oklch(0.2 0.06 330)" }}
+        {/* Header */}
+        <div
+          className="flex items-center gap-3 px-4 pt-12 pb-4 flex-shrink-0"
+          style={{
+            background:
+              "linear-gradient(180deg,oklch(0.14 0.07 340) 0%,oklch(0.1 0.04 320) 100%)",
+            borderBottom: "1px solid oklch(0.22 0.06 330 / 0.5)",
+          }}
         >
-          <ArrowLeft className="w-4 h-4 text-white" />
-        </button>
-        <div className="flex-1 flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0"
-            style={{
-              background: "linear-gradient(135deg,#e11d48,#7c3aed)",
-              padding: 2,
-            }}
+          <button
+            type="button"
+            onClick={onBack}
+            data-ocid="conversation.button"
+            className="w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ background: "oklch(0.2 0.06 330)" }}
           >
+            <ArrowLeft className="w-4 h-4 text-white" />
+          </button>
+          <div className="flex-1 flex items-center gap-3">
             <div
-              className="w-full h-full rounded-full overflow-hidden"
-              style={{ background: "#1a0a1e" }}
+              className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0"
+              style={{
+                background: "linear-gradient(135deg,#e11d48,#7c3aed)",
+                padding: 2,
+              }}
             >
-              {profile.photoUrl ? (
-                <img
-                  src={profile.photoUrl}
-                  alt={profile.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="w-full h-full flex items-center justify-center text-white font-bold text-sm">
-                  {profile.name.charAt(0)}
-                </span>
-              )}
+              <div
+                className="w-full h-full rounded-full overflow-hidden"
+                style={{ background: "#1a0a1e" }}
+              >
+                {profile.photoUrl ? (
+                  <img
+                    src={profile.photoUrl}
+                    alt={profile.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="w-full h-full flex items-center justify-center text-white font-bold text-sm">
+                    {profile.name.charAt(0)}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-white text-sm">{profile.name}</p>
+              <p
+                className="text-[10px] transition-all duration-300"
+                style={{ color: showTypingBubble ? "#ec4899" : "#4ade80" }}
+              >
+                {showTypingBubble ? (
+                  <span className="inline-flex items-center gap-1">
+                    typing
+                    <span className="inline-flex gap-0.5">
+                      {[0, 1, 2].map((i) => (
+                        <span
+                          key={i}
+                          className="w-1 h-1 rounded-full bg-pink-400 inline-block"
+                          style={{
+                            animation: `bounce 0.8s ease-in-out ${i * 0.15}s infinite`,
+                          }}
+                        />
+                      ))}
+                    </span>
+                  </span>
+                ) : (
+                  "Online"
+                )}
+              </p>
+              <p className="text-[10px] text-white/30 mt-0.5">
+                {matchedAgoLabel(profile.createdAt)}
+              </p>
             </div>
           </div>
-          <div>
-            <p className="font-semibold text-white text-sm">{profile.name}</p>
-            <p className="text-[10px] text-green-400">
-              {isTyping ? "typing..." : "Online"}
-            </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onVoiceCall}
+              data-ocid="conversation.secondary_button"
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{
+                background: "oklch(0.65 0.22 10 / 0.2)",
+                border: "1px solid oklch(0.65 0.22 10 / 0.4)",
+              }}
+            >
+              <Phone
+                className="w-4 h-4"
+                style={{ color: "oklch(0.75 0.18 10)" }}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={onVideoCall}
+              data-ocid="conversation.secondary_button"
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{
+                background: "oklch(0.55 0.22 280 / 0.2)",
+                border: "1px solid oklch(0.55 0.22 280 / 0.4)",
+              }}
+            >
+              <Video
+                className="w-4 h-4"
+                style={{ color: "oklch(0.75 0.18 280)" }}
+              />
+            </button>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onVoiceCall}
-            data-ocid="conversation.secondary_button"
-            className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{
-              background: "oklch(0.65 0.22 10 / 0.2)",
-              border: "1px solid oklch(0.65 0.22 10 / 0.4)",
-            }}
-          >
-            <Phone
-              className="w-4 h-4"
-              style={{ color: "oklch(0.75 0.18 10)" }}
-            />
-          </button>
-          <button
-            type="button"
-            onClick={onVideoCall}
-            data-ocid="conversation.secondary_button"
-            className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{
-              background: "oklch(0.55 0.22 280 / 0.2)",
-              border: "1px solid oklch(0.55 0.22 280 / 0.4)",
-            }}
-          >
-            <Video
-              className="w-4 h-4"
-              style={{ color: "oklch(0.75 0.18 280)" }}
-            />
-          </button>
-        </div>
-      </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {visibleMessages.length === 0 && (
+        {/* Pinned Message Banner */}
+        {pinnedMessage && (
           <div
-            className="text-center py-12"
-            data-ocid="conversation.empty_state"
+            data-ocid="conversation.pinned_banner"
+            className="flex items-center gap-2.5 px-4 py-2.5 flex-shrink-0"
+            style={{
+              background: "oklch(0.13 0.05 320)",
+              borderBottom: "1px solid oklch(0.22 0.06 330 / 0.4)",
+              borderLeft: "3px solid",
+              borderImage: "linear-gradient(180deg,#e11d48,#7c3aed) 1",
+            }}
           >
-            <p className="text-4xl mb-3">💬</p>
-            <p className="text-white/50 text-sm">
-              Start a conversation with {profile.name}
+            <Pin
+              className="w-3.5 h-3.5 flex-shrink-0"
+              style={{ color: "#f59e0b" }}
+            />
+            <p className="flex-1 text-white/75 text-xs truncate">
+              {pinnedMessage.text.length > 60
+                ? `${pinnedMessage.text.slice(0, 60)}…`
+                : pinnedMessage.text}
             </p>
+            <button
+              type="button"
+              data-ocid="conversation.unpin_button"
+              onClick={() => setPinnedMessage(null)}
+              className="flex-shrink-0 text-white/40 hover:text-white/70 transition-colors"
+              aria-label="Unpin message"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
-        {visibleMessages.map((msg) => {
-          const isMine = msg.fromUserId.toString() === myPrincipal;
-          const msgId = msg.id.toString();
-          const displayText = localEdits.get(msgId) ?? msg.text;
-          // Local optimistic reaction takes precedence, then backend reaction
-          const reaction = localReactions.get(msgId) ?? msg.reaction;
-          const time = new Date(
-            Number(msg.timestamp) / 1_000_000,
-          ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-          const isEdited = localEdits.has(msgId);
-          return (
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {visibleMessages.length === 0 && giftMessages.length === 0 && (
             <div
-              key={msgId}
-              className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+              className="text-center py-12"
+              data-ocid="conversation.empty_state"
             >
-              <div className="max-w-[75%]">
-                {!isMine && (
+              <p className="text-4xl mb-3">💬</p>
+              <p className="text-white/50 text-sm">
+                Start a conversation with {profile.name}
+              </p>
+            </div>
+          )}
+          {visibleMessages.map((msg) => {
+            const isMine = msg.fromUserId.toString() === myPrincipal;
+            const msgId = msg.id.toString();
+            const displayText = localEdits.get(msgId) ?? msg.text;
+            const reaction = localReactions.get(msgId) ?? msg.reaction;
+            const time = new Date(
+              Number(msg.timestamp) / 1_000_000,
+            ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            const isEdited = localEdits.has(msgId);
+            // Get delivery status for my messages
+            const statusEntry = isMine ? msgStatusMap.get(msgId) : undefined;
+            return (
+              <div
+                key={msgId}
+                className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+              >
+                <div className="max-w-[75%]">
+                  {!isMine && (
+                    <div
+                      className="w-6 h-6 rounded-full overflow-hidden mb-1 flex items-center justify-center"
+                      style={{
+                        background: "linear-gradient(135deg,#e11d48,#7c3aed)",
+                      }}
+                    >
+                      {profile.photoUrl ? (
+                        <img
+                          src={profile.photoUrl}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-white text-xs font-bold">
+                          {profile.name.charAt(0)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div
-                    className="w-6 h-6 rounded-full overflow-hidden mb-1 flex items-center justify-center"
+                    className="px-4 py-2.5 rounded-2xl text-sm cursor-pointer select-none active:scale-95 transition-transform"
+                    style={
+                      isMine
+                        ? {
+                            background:
+                              "linear-gradient(135deg,#e11d48,#7c3aed)",
+                            color: "white",
+                          }
+                        : { background: "oklch(0.18 0.05 320)", color: "white" }
+                    }
+                    onContextMenu={(e) =>
+                      openContextMenu(e, msgId, msg.id, displayText, isMine)
+                    }
+                    onTouchStart={startLongPress(
+                      msgId,
+                      msg.id,
+                      displayText,
+                      isMine,
+                    )}
+                    onTouchEnd={cancelLongPress}
+                    onTouchMove={cancelLongPress}
+                  >
+                    {displayText}
+                    {isEdited && (
+                      <span className="text-white/50 text-[9px] ml-1">
+                        (edited)
+                      </span>
+                    )}
+                    {isStarred(msgId) && (
+                      <span className="ml-1 text-[11px]" title="Starred">
+                        ⭐
+                      </span>
+                    )}
+                  </div>
+                  {reaction && (
+                    <div
+                      className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-sm ${
+                        isMine ? "float-right" : "float-left"
+                      }`}
+                      style={{
+                        background: "oklch(0.18 0.05 320)",
+                        border: "1px solid oklch(0.28 0.07 330)",
+                      }}
+                    >
+                      {reaction}
+                    </div>
+                  )}
+                  <div
+                    className={`flex items-center gap-1 mt-0.5 clear-both ${
+                      isMine ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <p className="text-[10px] text-white/40">{time}</p>
+                    {isMine && <MsgReceipt entry={statusEntry} />}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Gift messages */}
+          {giftMessages.map((gm) => (
+            <div key={gm.id} className="flex justify-end">
+              <div
+                className="max-w-[65%] px-5 py-4 rounded-3xl flex flex-col items-center gap-1.5"
+                style={{
+                  background: "linear-gradient(135deg,#e11d48,#7c3aed)",
+                  boxShadow: "0 4px 20px rgba(225,29,72,0.4)",
+                }}
+              >
+                <span className="text-3xl">{gm.giftEmoji}</span>
+                <p className="text-white text-sm font-semibold text-center italic">
+                  {gm.text}
+                </p>
+                <p className="text-white/60 text-[10px]">
+                  {new Date(gm.timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
+            </div>
+          ))}
+
+          {/* Seen indicator — Messenger-style avatar below last read sent message */}
+          {readReceiptsOn &&
+            (() => {
+              const lastReadSent = [...visibleMessages]
+                .reverse()
+                .find((m) => m.fromUserId.toString() === myPrincipal && m.read);
+              if (!lastReadSent) return null;
+              return (
+                <div
+                  key={`seen_${lastReadSent.id}`}
+                  className="flex justify-end pr-1 -mt-2 mb-1"
+                >
+                  <div
+                    className="w-4 h-4 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0"
+                    title={`Seen by ${profile.name}`}
                     style={{
                       background: "linear-gradient(135deg,#e11d48,#7c3aed)",
                     }}
@@ -380,273 +749,283 @@ export default function ConversationPage({
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <span className="text-white text-xs font-bold">
+                      <span className="text-white text-[8px] font-bold">
                         {profile.name.charAt(0)}
                       </span>
                     )}
                   </div>
-                )}
-                <div
-                  className="px-4 py-2.5 rounded-2xl text-sm cursor-pointer select-none active:scale-95 transition-transform"
-                  style={
-                    isMine
-                      ? {
-                          background: "linear-gradient(135deg,#e11d48,#7c3aed)",
-                          color: "white",
-                        }
-                      : { background: "oklch(0.18 0.05 320)", color: "white" }
-                  }
-                  onContextMenu={(e) =>
-                    openContextMenu(e, msgId, msg.id, displayText, isMine)
-                  }
-                  onTouchStart={startLongPress(
-                    msgId,
-                    msg.id,
-                    displayText,
-                    isMine,
-                  )}
-                  onTouchEnd={cancelLongPress}
-                  onTouchMove={cancelLongPress}
-                >
-                  {displayText}
-                  {isEdited && (
-                    <span className="text-white/50 text-[9px] ml-1">
-                      (edited)
-                    </span>
-                  )}
                 </div>
-                {/* Reaction pill */}
-                {reaction && (
+              );
+            })()}
+
+          {/* Remote typing bubble */}
+          {showTypingBubble && (
+            <div className="flex justify-start">
+              <div
+                className="px-4 py-3 rounded-2xl flex gap-1 items-center"
+                style={{ background: "oklch(0.18 0.05 320)" }}
+              >
+                {[0, 1, 2].map((i) => (
                   <div
-                    className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-sm ${isMine ? "float-right" : "float-left"}`}
+                    key={i}
+                    className="w-2 h-2 rounded-full"
                     style={{
-                      background: "oklch(0.18 0.05 320)",
-                      border: "1px solid oklch(0.28 0.07 330)",
+                      background: "oklch(0.65 0.22 10)",
+                      animation: `bounce 1s ease-in-out ${i * 0.2}s infinite`,
                     }}
-                  >
-                    {reaction}
-                  </div>
-                )}
-                <div
-                  className={`flex items-center gap-1 mt-0.5 clear-both ${isMine ? "justify-end" : "justify-start"}`}
-                >
-                  <p className="text-[10px] text-white/40">{time}</p>
-                  {isMine && (
-                    <span
-                      className="flex items-center"
-                      title={msg.read ? "Read" : "Sent"}
-                    >
-                      {msg.read ? (
-                        <span className="flex" style={{ color: "#3b82f6" }}>
-                          <Check className="w-3 h-3" />
-                          <Check className="w-3 h-3 -ml-1.5" />
-                        </span>
-                      ) : (
-                        <Check className="w-3 h-3 text-white/30" />
-                      )}
-                    </span>
-                  )}
-                </div>
+                  />
+                ))}
               </div>
             </div>
-          );
-        })}
-        {isTyping && (
-          <div className="flex justify-start">
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Context Menu */}
+        {contextMenu && (
+          <div
+            className="absolute z-50 rounded-2xl overflow-hidden"
+            style={{
+              left: contextMenu.x,
+              top: contextMenu.y - 10,
+              background: "oklch(0.14 0.06 330 / 0.97)",
+              border: "1px solid oklch(0.3 0.1 330 / 0.6)",
+              backdropFilter: "blur(20px)",
+              boxShadow: "0 8px 32px oklch(0.05 0.03 330 / 0.8)",
+              minWidth: 180,
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             <div
-              className="px-4 py-3 rounded-2xl flex gap-1 items-center"
-              style={{ background: "oklch(0.18 0.05 320)" }}
+              className="flex gap-1 px-3 py-3 border-b"
+              style={{ borderColor: "oklch(0.25 0.07 330 / 0.4)" }}
             >
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{
-                    background: "oklch(0.65 0.22 10)",
-                    animation: `bounce 1s ease-in-out ${i * 0.2}s infinite`,
-                  }}
-                />
+              {REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => handleReact(emoji)}
+                  className="text-xl hover:scale-125 transition-transform active:scale-110"
+                >
+                  {emoji}
+                </button>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={handleReply}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5 transition-colors"
+            >
+              <Reply className="w-4 h-4" style={{ color: "#ec4899" }} />
+              Reply
+            </button>
+            {contextMenu.isMine && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleEdit}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5 transition-colors"
+                >
+                  <Edit2 className="w-4 h-4" style={{ color: "#a855f7" }} />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  data-ocid="conversation.delete_button"
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-white/5 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={handlePin}
+              data-ocid="conversation.pin_button"
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5 transition-colors"
+            >
+              <Pin className="w-4 h-4" style={{ color: "#f59e0b" }} />
+              {pinnedMessage?.id === contextMenu.msgId ? "Unpin" : "Pin"}
+            </button>
+            <button
+              type="button"
+              onClick={handleStar}
+              data-ocid="conversation.toggle"
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5 transition-colors"
+            >
+              <Star
+                className="w-4 h-4"
+                style={{ color: "#f59e0b" }}
+                fill={isStarred(contextMenu.msgId) ? "#f59e0b" : "none"}
+              />
+              {isStarred(contextMenu.msgId) ? "Unstar" : "Star"}
+            </button>
           </div>
         )}
-        <div ref={messagesEndRef} />
-      </div>
 
-      {/* Context Menu */}
-      {contextMenu && (
+        {/* Input area */}
         <div
-          className="absolute z-50 rounded-2xl overflow-hidden"
+          className="flex-shrink-0"
           style={{
-            left: contextMenu.x,
-            top: contextMenu.y - 10,
-            background: "oklch(0.14 0.06 330 / 0.97)",
-            border: "1px solid oklch(0.3 0.1 330 / 0.6)",
-            backdropFilter: "blur(20px)",
-            boxShadow: "0 8px 32px oklch(0.05 0.03 330 / 0.8)",
-            minWidth: 180,
+            borderTop: "1px solid oklch(0.22 0.06 330 / 0.5)",
+            background: "oklch(0.1 0.04 320)",
           }}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
         >
-          {/* Reaction row */}
-          <div
-            className="flex gap-1 px-3 py-3 border-b"
-            style={{ borderColor: "oklch(0.25 0.07 330 / 0.4)" }}
-          >
-            {REACTIONS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                onClick={() => handleReact(emoji)}
-                className="text-xl hover:scale-125 transition-transform active:scale-110"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-          {/* Actions */}
-          <button
-            type="button"
-            onClick={handleReply}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5 transition-colors"
-          >
-            <Reply className="w-4 h-4" style={{ color: "#ec4899" }} />
-            Reply
-          </button>
-          {contextMenu.isMine && (
-            <>
-              <button
-                type="button"
-                onClick={handleEdit}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5 transition-colors"
-              >
-                <Edit2 className="w-4 h-4" style={{ color: "#a855f7" }} />
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-white/5 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Input area */}
-      <div
-        className="flex-shrink-0"
-        style={{
-          borderTop: "1px solid oklch(0.22 0.06 330 / 0.5)",
-          background: "oklch(0.1 0.04 320)",
-        }}
-      >
-        {/* Reply preview */}
-        {replyTo && (
-          <div
-            className="flex items-center gap-2 px-4 py-2"
-            style={{
-              borderBottom: "1px solid oklch(0.22 0.06 330 / 0.4)",
-              background: "oklch(0.13 0.05 320)",
-            }}
-          >
-            <Reply className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-pink-400 font-semibold">
-                {replyTo.senderName}
-              </p>
-              <p className="text-xs text-white/50 truncate">
-                {replyTo.text.length > 50
-                  ? `${replyTo.text.slice(0, 50)}…`
-                  : replyTo.text}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setReplyTo(null)}
-              className="text-white/40 hover:text-white/70 flex-shrink-0"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-        {/* Edit indicator */}
-        {editingMsgId && (
-          <div
-            className="flex items-center gap-2 px-4 py-1.5"
-            style={{
-              borderBottom: "1px solid oklch(0.22 0.06 330 / 0.4)",
-              background: "oklch(0.13 0.05 320)",
-            }}
-          >
-            <Edit2 className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-[10px] text-purple-400 font-semibold flex-1">
-              Editing message
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setEditingMsgId(null);
-                setInputValue("");
+          {replyTo && (
+            <div
+              className="flex items-center gap-2 px-4 py-2"
+              style={{
+                borderBottom: "1px solid oklch(0.22 0.06 330 / 0.4)",
+                background: "oklch(0.13 0.05 320)",
               }}
-              className="text-white/40 hover:text-white/70"
             >
-              <X className="w-4 h-4" />
+              <Reply className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-pink-400 font-semibold">
+                  {replyTo.senderName}
+                </p>
+                <p className="text-xs text-white/50 truncate">
+                  {replyTo.text.length > 50
+                    ? `${replyTo.text.slice(0, 50)}…`
+                    : replyTo.text}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyTo(null)}
+                className="text-white/40 hover:text-white/70 flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          {editingMsgId && (
+            <div
+              className="flex items-center gap-2 px-4 py-1.5"
+              style={{
+                borderBottom: "1px solid oklch(0.22 0.06 330 / 0.4)",
+                background: "oklch(0.13 0.05 320)",
+              }}
+            >
+              <Edit2 className="w-3.5 h-3.5 text-purple-400" />
+              <span className="text-[10px] text-purple-400 font-semibold flex-1">
+                Editing message
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMsgId(null);
+                  setInputValue("");
+                }}
+                className="text-white/40 hover:text-white/70"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          <div className="px-4 py-3 flex items-center gap-2">
+            <Input
+              value={inputValue}
+              onChange={(e) => handleTyping(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={
+                editingMsgId
+                  ? "Edit message..."
+                  : replyTo
+                    ? "Reply..."
+                    : "Type a message..."
+              }
+              data-ocid="conversation.input"
+              className="flex-1 h-11 rounded-2xl text-sm"
+              style={{
+                background: "oklch(0.16 0.05 320)",
+                border: "1px solid oklch(0.26 0.07 330)",
+                color: "white",
+              }}
+            />
+            {/* Gift button */}
+            <button
+              type="button"
+              data-ocid="conversation.secondary_button"
+              onClick={() => setShowGiftPicker(true)}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-lg"
+              style={{ background: "oklch(0.18 0.05 320)" }}
+              title="Send a gift"
+            >
+              🎁
+            </button>
+            {/* Emoji button */}
+            <button
+              type="button"
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: "oklch(0.18 0.05 320)" }}
+            >
+              <Smile
+                className="w-4 h-4"
+                style={{ color: "oklch(0.65 0.15 60)" }}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={sendMessage.isPending}
+              data-ocid="conversation.submit_button"
+              className="w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
+              style={{ background: "linear-gradient(135deg,#e11d48,#7c3aed)" }}
+            >
+              <Send className="w-4 h-4 text-white" />
             </button>
           </div>
-        )}
-        <div className="px-4 py-3 flex items-center gap-3">
-          <Input
-            value={inputValue}
-            onChange={(e) => handleTyping(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder={
-              editingMsgId
-                ? "Edit message..."
-                : replyTo
-                  ? "Reply..."
-                  : "Type a message..."
-            }
-            data-ocid="conversation.input"
-            className="flex-1 h-11 rounded-2xl text-sm"
-            style={{
-              background: "oklch(0.16 0.05 320)",
-              border: "1px solid oklch(0.26 0.07 330)",
-              color: "white",
-            }}
-          />
-          {/* Emoji picker trigger placeholder */}
-          <button
-            type="button"
-            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: "oklch(0.18 0.05 320)" }}
-          >
-            <Smile
-              className="w-4 h-4"
-              style={{ color: "oklch(0.65 0.15 60)" }}
-            />
-          </button>
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={sendMessage.isPending}
-            data-ocid="conversation.submit_button"
-            className="w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform flex-shrink-0"
-            style={{ background: "linear-gradient(135deg,#e11d48,#7c3aed)" }}
-          >
-            <Send className="w-4 h-4 text-white" />
-          </button>
         </div>
+
+        {/* Gift Picker Sheet */}
+        <Sheet open={showGiftPicker} onOpenChange={setShowGiftPicker}>
+          <SheetContent
+            side="bottom"
+            data-ocid="conversation.sheet"
+            className="rounded-t-3xl border-0 px-6 pb-10"
+            style={{
+              background: "oklch(0.11 0.05 300)",
+              borderTop: "1px solid oklch(0.22 0.07 300)",
+            }}
+          >
+            <SheetHeader className="mb-4">
+              <SheetTitle className="text-white font-bold">
+                🎁 Send a Gift
+              </SheetTitle>
+            </SheetHeader>
+            <div className="grid grid-cols-2 gap-3">
+              {GIFTS.map((gift) => (
+                <button
+                  key={gift.name}
+                  type="button"
+                  data-ocid="conversation.secondary_button"
+                  onClick={() => handleSendGift(gift)}
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl transition-all active:scale-95"
+                  style={{
+                    background: "oklch(0.16 0.06 300)",
+                    border: "1px solid oklch(0.28 0.08 300)",
+                  }}
+                >
+                  <span className="text-4xl">{gift.emoji}</span>
+                  <p className="text-white font-semibold text-sm">
+                    {gift.name}
+                  </p>
+                  <p className="text-white/50 text-xs">{gift.points} pts</p>
+                </button>
+              ))}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

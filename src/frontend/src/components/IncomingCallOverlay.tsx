@@ -1,7 +1,7 @@
 import { Phone, PhoneOff, Video } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { CallSignalType, CallType, type Profile } from "../backend";
-import { useActor } from "../hooks/useActor";
+import { useAppActor as useActor } from "../hooks/useAppActor";
 import { playRingTone } from "../hooks/useSound";
 
 interface IncomingCallInfo {

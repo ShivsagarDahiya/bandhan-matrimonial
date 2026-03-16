@@ -24,91 +24,13 @@ export const UserRole = IDL.Variant({
   'user' : IDL.Null,
   'guest' : IDL.Null,
 });
-export const CallType = IDL.Variant({ 'video' : IDL.Null, 'voice' : IDL.Null });
-export const CallSignalType = IDL.Variant({
-  'iceCandidate' : IDL.Null,
-  'offer' : IDL.Null,
-  'callEnd' : IDL.Null,
-  'answer' : IDL.Null,
-  'callDecline' : IDL.Null,
-});
-export const CallSignal = IDL.Record({
+export const GiftRecord = IDL.Record({
   'id' : IDL.Nat,
-  'data' : IDL.Text,
-  'toUserId' : IDL.Principal,
-  'callType' : CallType,
-  'fromUserId' : IDL.Principal,
-  'timestamp' : IDL.Int,
-  'signalType' : CallSignalType,
-});
-export const Gender = IDL.Variant({
-  'other' : IDL.Null,
-  'female' : IDL.Null,
-  'male' : IDL.Null,
-});
-export const Profile = IDL.Record({
-  'age' : IDL.Nat,
-  'bio' : IDL.Text,
-  'occupation' : IDL.Text,
-  'height' : IDL.Text,
-  'aboutMe' : IDL.Text,
-  'favoriteSongs' : IDL.Vec(IDL.Text),
-  'interests' : IDL.Vec(IDL.Text),
-  'userId' : IDL.Principal,
-  'mood' : IDL.Text,
-  'name' : IDL.Text,
-  'createdAt' : IDL.Int,
-  'education' : IDL.Text,
-  'photoUrl' : IDL.Opt(IDL.Text),
-  'motherTongue' : IDL.Text,
-  'gender' : Gender,
-  'favoriteMovies' : IDL.Vec(IDL.Text),
-  'mediaUrls' : IDL.Vec(IDL.Text),
-  'phone' : IDL.Opt(IDL.Text),
-  'religion' : IDL.Text,
-  'thoughts' : IDL.Text,
-  'maritalStatus' : IDL.Text,
-  'location' : IDL.Text,
-  'hobbies' : IDL.Vec(IDL.Text),
-});
-export const CallStatus = IDL.Variant({
-  'completed' : IDL.Null,
-  'missed' : IDL.Null,
-  'declined' : IDL.Null,
-});
-export const CallHistory = IDL.Record({
-  'status' : CallStatus,
-  'withUserId' : IDL.Principal,
-  'callType' : CallType,
-  'durationSeconds' : IDL.Nat,
-  'timestamp' : IDL.Int,
-});
-export const Message = IDL.Record({
-  'id' : IDL.Nat,
-  'read' : IDL.Bool,
-  'text' : IDL.Text,
+  'giftEmoji' : IDL.Text,
   'toUserId' : IDL.Principal,
   'fromUserId' : IDL.Principal,
   'timestamp' : IDL.Int,
-});
-export const Story = IDL.Record({
-  'id' : IDL.Nat,
-  'userId' : IDL.Principal,
-  'authorName' : IDL.Text,
-  'authorPhoto' : IDL.Opt(IDL.Text),
-  'imageUrl' : IDL.Text,
-  'timestamp' : IDL.Int,
-  'caption' : IDL.Text,
-  'likesCount' : IDL.Nat,
-});
-export const StoryComment = IDL.Record({
-  'id' : IDL.Nat,
-  'parentCommentId' : IDL.Opt(IDL.Nat),
-  'userId' : IDL.Principal,
-  'storyId' : IDL.Nat,
-  'text' : IDL.Text,
-  'authorName' : IDL.Text,
-  'timestamp' : IDL.Int,
+  'giftName' : IDL.Text,
 });
 
 export const idlService = IDL.Service({
@@ -139,92 +61,12 @@ export const idlService = IDL.Service({
     ),
   '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
-  'acceptMatchRequest' : IDL.Func([IDL.Principal], [], []),
-  'addStory' : IDL.Func([IDL.Text, IDL.Text], [], []),
-  'addStoryComment' : IDL.Func([IDL.Nat, IDL.Text], [], []),
-  'adminDeleteProfile' : IDL.Func([IDL.Principal], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
-  'consumeCallSignals' : IDL.Func([IDL.Principal], [IDL.Vec(CallSignal)], []),
-  'createOrUpdateProfile' : IDL.Func(
-      [
-        IDL.Text,
-        IDL.Nat,
-        Gender,
-        IDL.Text,
-        IDL.Text,
-        IDL.Text,
-        IDL.Opt(IDL.Text),
-        IDL.Text,
-        IDL.Text,
-        IDL.Text,
-        IDL.Text,
-        IDL.Vec(IDL.Text),
-        IDL.Vec(IDL.Text),
-        IDL.Text,
-        IDL.Vec(IDL.Text),
-        IDL.Vec(IDL.Text),
-        IDL.Text,
-        IDL.Text,
-        IDL.Vec(IDL.Text),
-        IDL.Text,
-        IDL.Opt(IDL.Text),
-      ],
-      [],
-      [],
-    ),
-  'declineMatchRequest' : IDL.Func([IDL.Principal], [], []),
-  'getAllProfiles' : IDL.Func([], [IDL.Vec(Profile)], ['query']),
-  'getAllWithRequestedCount' : IDL.Func(
-      [],
-      [IDL.Vec(IDL.Tuple(Profile, IDL.Nat))],
-      ['query'],
-    ),
-  'getCallHistory' : IDL.Func(
-      [],
-      [IDL.Vec(IDL.Tuple(CallHistory, Profile))],
-      ['query'],
-    ),
-  'getCallerUserProfile' : IDL.Func([], [IDL.Opt(Profile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
-  'getMatchRequests' : IDL.Func(
-      [],
-      [
-        IDL.Vec(
-          IDL.Tuple(
-            Profile,
-            IDL.Variant({
-              'pending' : IDL.Null,
-              'accepted' : IDL.Null,
-              'declined' : IDL.Null,
-            }),
-          )
-        ),
-      ],
-      ['query'],
-    ),
-  'getMessages' : IDL.Func([IDL.Principal], [IDL.Vec(Message)], ['query']),
-  'getMutualMatches' : IDL.Func([], [IDL.Vec(Profile)], ['query']),
-  'getStories' : IDL.Func([], [IDL.Vec(Story)], ['query']),
-  'getStoryComments' : IDL.Func([IDL.Nat], [IDL.Vec(StoryComment)], ['query']),
-  'getTypingStatus' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
-  'getUserProfile' : IDL.Func([IDL.Principal], [IDL.Opt(Profile)], ['query']),
-  'hasLikedStory' : IDL.Func([IDL.Nat], [IDL.Bool], ['query']),
-  'isAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'getGiftsReceived' : IDL.Func([], [IDL.Vec(GiftRecord)], ['query']),
+  'getGiftsSent' : IDL.Func([], [IDL.Vec(GiftRecord)], ['query']),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
-  'likeStory' : IDL.Func([IDL.Nat], [], []),
-  'logCall' : IDL.Func([IDL.Principal, CallType, IDL.Nat, CallStatus], [], []),
-  'markMessageRead' : IDL.Func([IDL.Nat], [], []),
-  'replyToStoryComment' : IDL.Func([IDL.Nat, IDL.Nat, IDL.Text], [], []),
-  'searchProfiles' : IDL.Func([IDL.Text], [IDL.Vec(Profile)], ['query']),
-  'sendMatchRequest' : IDL.Func([IDL.Principal], [], []),
-  'sendMessage' : IDL.Func([IDL.Principal, IDL.Text], [], []),
-  'setTyping' : IDL.Func([IDL.Principal, IDL.Bool], [], []),
-  'storeCallSignal' : IDL.Func(
-      [IDL.Principal, CallSignalType, IDL.Text, CallType],
-      [],
-      [],
-    ),
-  'unlikeStory' : IDL.Func([IDL.Nat], [], []),
+  'sendGift' : IDL.Func([IDL.Principal, IDL.Text, IDL.Text], [GiftRecord], []),
 });
 
 export const idlInitArgs = [];
@@ -246,91 +88,13 @@ export const idlFactory = ({ IDL }) => {
     'user' : IDL.Null,
     'guest' : IDL.Null,
   });
-  const CallType = IDL.Variant({ 'video' : IDL.Null, 'voice' : IDL.Null });
-  const CallSignalType = IDL.Variant({
-    'iceCandidate' : IDL.Null,
-    'offer' : IDL.Null,
-    'callEnd' : IDL.Null,
-    'answer' : IDL.Null,
-    'callDecline' : IDL.Null,
-  });
-  const CallSignal = IDL.Record({
+  const GiftRecord = IDL.Record({
     'id' : IDL.Nat,
-    'data' : IDL.Text,
-    'toUserId' : IDL.Principal,
-    'callType' : CallType,
-    'fromUserId' : IDL.Principal,
-    'timestamp' : IDL.Int,
-    'signalType' : CallSignalType,
-  });
-  const Gender = IDL.Variant({
-    'other' : IDL.Null,
-    'female' : IDL.Null,
-    'male' : IDL.Null,
-  });
-  const Profile = IDL.Record({
-    'age' : IDL.Nat,
-    'bio' : IDL.Text,
-    'occupation' : IDL.Text,
-    'height' : IDL.Text,
-    'aboutMe' : IDL.Text,
-    'favoriteSongs' : IDL.Vec(IDL.Text),
-    'interests' : IDL.Vec(IDL.Text),
-    'userId' : IDL.Principal,
-    'mood' : IDL.Text,
-    'name' : IDL.Text,
-    'createdAt' : IDL.Int,
-    'education' : IDL.Text,
-    'photoUrl' : IDL.Opt(IDL.Text),
-    'motherTongue' : IDL.Text,
-    'gender' : Gender,
-    'favoriteMovies' : IDL.Vec(IDL.Text),
-    'mediaUrls' : IDL.Vec(IDL.Text),
-    'phone' : IDL.Opt(IDL.Text),
-    'religion' : IDL.Text,
-    'thoughts' : IDL.Text,
-    'maritalStatus' : IDL.Text,
-    'location' : IDL.Text,
-    'hobbies' : IDL.Vec(IDL.Text),
-  });
-  const CallStatus = IDL.Variant({
-    'completed' : IDL.Null,
-    'missed' : IDL.Null,
-    'declined' : IDL.Null,
-  });
-  const CallHistory = IDL.Record({
-    'status' : CallStatus,
-    'withUserId' : IDL.Principal,
-    'callType' : CallType,
-    'durationSeconds' : IDL.Nat,
-    'timestamp' : IDL.Int,
-  });
-  const Message = IDL.Record({
-    'id' : IDL.Nat,
-    'read' : IDL.Bool,
-    'text' : IDL.Text,
+    'giftEmoji' : IDL.Text,
     'toUserId' : IDL.Principal,
     'fromUserId' : IDL.Principal,
     'timestamp' : IDL.Int,
-  });
-  const Story = IDL.Record({
-    'id' : IDL.Nat,
-    'userId' : IDL.Principal,
-    'authorName' : IDL.Text,
-    'authorPhoto' : IDL.Opt(IDL.Text),
-    'imageUrl' : IDL.Text,
-    'timestamp' : IDL.Int,
-    'caption' : IDL.Text,
-    'likesCount' : IDL.Nat,
-  });
-  const StoryComment = IDL.Record({
-    'id' : IDL.Nat,
-    'parentCommentId' : IDL.Opt(IDL.Nat),
-    'userId' : IDL.Principal,
-    'storyId' : IDL.Nat,
-    'text' : IDL.Text,
-    'authorName' : IDL.Text,
-    'timestamp' : IDL.Int,
+    'giftName' : IDL.Text,
   });
   
   return IDL.Service({
@@ -361,100 +125,16 @@ export const idlFactory = ({ IDL }) => {
       ),
     '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
-    'acceptMatchRequest' : IDL.Func([IDL.Principal], [], []),
-    'addStory' : IDL.Func([IDL.Text, IDL.Text], [], []),
-    'addStoryComment' : IDL.Func([IDL.Nat, IDL.Text], [], []),
-    'adminDeleteProfile' : IDL.Func([IDL.Principal], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
-    'consumeCallSignals' : IDL.Func([IDL.Principal], [IDL.Vec(CallSignal)], []),
-    'createOrUpdateProfile' : IDL.Func(
-        [
-          IDL.Text,
-          IDL.Nat,
-          Gender,
-          IDL.Text,
-          IDL.Text,
-          IDL.Text,
-          IDL.Opt(IDL.Text),
-          IDL.Text,
-          IDL.Text,
-          IDL.Text,
-          IDL.Text,
-          IDL.Vec(IDL.Text),
-          IDL.Vec(IDL.Text),
-          IDL.Text,
-          IDL.Vec(IDL.Text),
-          IDL.Vec(IDL.Text),
-          IDL.Text,
-          IDL.Text,
-          IDL.Vec(IDL.Text),
-          IDL.Text,
-          IDL.Opt(IDL.Text),
-        ],
-        [],
-        [],
-      ),
-    'declineMatchRequest' : IDL.Func([IDL.Principal], [], []),
-    'getAllProfiles' : IDL.Func([], [IDL.Vec(Profile)], ['query']),
-    'getAllWithRequestedCount' : IDL.Func(
-        [],
-        [IDL.Vec(IDL.Tuple(Profile, IDL.Nat))],
-        ['query'],
-      ),
-    'getCallHistory' : IDL.Func(
-        [],
-        [IDL.Vec(IDL.Tuple(CallHistory, Profile))],
-        ['query'],
-      ),
-    'getCallerUserProfile' : IDL.Func([], [IDL.Opt(Profile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
-    'getMatchRequests' : IDL.Func(
-        [],
-        [
-          IDL.Vec(
-            IDL.Tuple(
-              Profile,
-              IDL.Variant({
-                'pending' : IDL.Null,
-                'accepted' : IDL.Null,
-                'declined' : IDL.Null,
-              }),
-            )
-          ),
-        ],
-        ['query'],
-      ),
-    'getMessages' : IDL.Func([IDL.Principal], [IDL.Vec(Message)], ['query']),
-    'getMutualMatches' : IDL.Func([], [IDL.Vec(Profile)], ['query']),
-    'getStories' : IDL.Func([], [IDL.Vec(Story)], ['query']),
-    'getStoryComments' : IDL.Func(
-        [IDL.Nat],
-        [IDL.Vec(StoryComment)],
-        ['query'],
-      ),
-    'getTypingStatus' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
-    'getUserProfile' : IDL.Func([IDL.Principal], [IDL.Opt(Profile)], ['query']),
-    'hasLikedStory' : IDL.Func([IDL.Nat], [IDL.Bool], ['query']),
-    'isAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'getGiftsReceived' : IDL.Func([], [IDL.Vec(GiftRecord)], ['query']),
+    'getGiftsSent' : IDL.Func([], [IDL.Vec(GiftRecord)], ['query']),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
-    'likeStory' : IDL.Func([IDL.Nat], [], []),
-    'logCall' : IDL.Func(
-        [IDL.Principal, CallType, IDL.Nat, CallStatus],
-        [],
-        [],
-      ),
-    'markMessageRead' : IDL.Func([IDL.Nat], [], []),
-    'replyToStoryComment' : IDL.Func([IDL.Nat, IDL.Nat, IDL.Text], [], []),
-    'searchProfiles' : IDL.Func([IDL.Text], [IDL.Vec(Profile)], ['query']),
-    'sendMatchRequest' : IDL.Func([IDL.Principal], [], []),
-    'sendMessage' : IDL.Func([IDL.Principal, IDL.Text], [], []),
-    'setTyping' : IDL.Func([IDL.Principal, IDL.Bool], [], []),
-    'storeCallSignal' : IDL.Func(
-        [IDL.Principal, CallSignalType, IDL.Text, CallType],
-        [],
+    'sendGift' : IDL.Func(
+        [IDL.Principal, IDL.Text, IDL.Text],
+        [GiftRecord],
         [],
       ),
-    'unlikeStory' : IDL.Func([IDL.Nat], [], []),
   });
 };
 

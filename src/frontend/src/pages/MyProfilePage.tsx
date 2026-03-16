@@ -1,6 +1,8 @@
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -8,6 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Camera,
@@ -19,22 +27,32 @@ import {
   Lock,
   LogOut,
   PhoneCall,
+  Rocket,
   Save,
   Shield,
+  Star,
   Upload,
+  Users,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Gender } from "../backend";
+import GalleryLightbox from "../components/GalleryLightbox";
+import StoryViewerModal from "../components/StoryViewerModal";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   useCallerProfile,
   useCreateProfile,
   usePremiumStatus,
   usePrivacyVisibility,
+  useProfileViewCount,
+  useProfileViewers,
   useSetPremiumStatus,
   useSetPrivacyVisibility,
   useSetShowLastActive,
   useShowLastActive,
+  useStories,
+  useSuperLikedBy,
 } from "../hooks/useQueries";
 import type { PrivacyVisibility } from "../hooks/useQueries";
 import { useStorageUpload } from "../hooks/useStorageUpload";
@@ -74,7 +92,28 @@ const HOBBIES_LIST = [
   "Blogging",
 ];
 
-// Map between UI option values and backend PrivacyVisibility values
+const MOOD_OPTIONS = [
+  "💕 Looking for love",
+  "🌟 Exploring",
+  "💍 Ready for marriage",
+  "🌸 Just joined",
+];
+
+const ICEBREAKER_QUESTIONS = [
+  "My love language is...",
+  "A perfect date looks like...",
+  "I\u2019m passionate about...",
+  "The way to my heart is...",
+  "My guilty pleasure is...",
+];
+
+const GOAL_OPTIONS = [
+  "Marriage",
+  "Long-term relationship",
+  "Friendship",
+  "Still figuring out",
+];
+
 const UI_TO_BACKEND: Record<string, PrivacyVisibility> = {
   everyone: "everyone",
   matches: "matchesOnly",
@@ -88,27 +127,150 @@ const BACKEND_TO_UI: Record<string, string> = {
 
 type VisibilityOption = "everyone" | "matches" | "hidden";
 
+interface IcebreakerEntry {
+  q: string;
+  a: string;
+}
+
 interface MyProfilePageProps {
   onCallHistory?: () => void;
+  onGoLive?: () => void;
+  onSuggestions?: () => void;
+  onGiftHistory?: () => void;
 }
-export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
+export default function MyProfilePage({
+  onCallHistory,
+  onGoLive,
+  onSuggestions,
+  onGiftHistory,
+}: MyProfilePageProps) {
   const { data: profile, isLoading } = useCallerProfile();
   const createProfile = useCreateProfile();
   const { clear: logout } = useInternetIdentity();
   const { uploadFile, uploading } = useStorageUpload();
   const [editing, setEditing] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showViewers, setShowViewers] = useState(false);
+  const [showSuperLikedBy, setShowSuperLikedBy] = useState(false);
+  const [storyViewerOpen, setStoryViewerOpen] = useState(false);
+  const [storyViewerIndex, setStoryViewerIndex] = useState(0);
+
+  const { data: profileViewCount = BigInt(0) } = useProfileViewCount();
+  const { data: profileViewers = [] } = useProfileViewers();
+  const { data: superLikedBy = [] } = useSuperLikedBy();
+  const { data: allStories = [] } = useStories();
+
+  // New feature states
+  const [localMood, setLocalMood] = useState("");
+  const [icebreakers, setIcebreakers] = useState<IcebreakerEntry[]>([
+    { q: "", a: "" },
+    { q: "", a: "" },
+    { q: "", a: "" },
+  ]);
+  const [relGoal, setRelGoal] = useState("");
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+  const [showBlocked, setShowBlocked] = useState(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: profile.userId is sufficient
+  useEffect(() => {
+    if (!profile) return;
+    const uid = profile.userId.toString();
+    setLocalMood(localStorage.getItem(`bandhan_mood_${uid}`) || "");
+    try {
+      const stored = localStorage.getItem(`bandhan_icebreakers_${uid}`);
+      if (stored) setIcebreakers(JSON.parse(stored));
+    } catch {}
+    setRelGoal(localStorage.getItem(`bandhan_goal_${uid}`) || "");
+    try {
+      const blocked = localStorage.getItem("bandhan_blocked");
+      if (blocked) setBlockedUsers(JSON.parse(blocked));
+    } catch {}
+  }, [profile?.userId]);
+
+  const saveMood = (m: string) => {
+    if (!profile) return;
+    setLocalMood(m);
+    localStorage.setItem(`bandhan_mood_${profile.userId.toString()}`, m);
+  };
+
+  const saveGoal = (g: string) => {
+    if (!profile) return;
+    setRelGoal(g);
+    localStorage.setItem(`bandhan_goal_${profile.userId.toString()}`, g);
+  };
+
+  const saveIcebreakers = (ibs: IcebreakerEntry[]) => {
+    if (!profile) return;
+    setIcebreakers(ibs);
+    localStorage.setItem(
+      `bandhan_icebreakers_${profile.userId.toString()}`,
+      JSON.stringify(ibs),
+    );
+  };
+
+  const handleUnblock = (userId: string) => {
+    const next = blockedUsers.filter((u) => u !== userId);
+    setBlockedUsers(next);
+    localStorage.setItem("bandhan_blocked", JSON.stringify(next));
+  };
+
+  // Profile boost state
+  const [boostExpiry, setBoostExpiry] = useState<number | null>(() => {
+    const stored = localStorage.getItem("bandhan_boost_expiry");
+    if (stored) {
+      const val = Number(stored);
+      return val > Date.now() ? val : null;
+    }
+    return null;
+  });
+  const [boostNow, setBoostNow] = useState(Date.now());
+  useEffect(() => {
+    if (!boostExpiry) return;
+    const interval = setInterval(() => {
+      setBoostNow(Date.now());
+      if (Date.now() >= boostExpiry) {
+        setBoostExpiry(null);
+        localStorage.removeItem("bandhan_boost_expiry");
+        clearInterval(interval);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [boostExpiry]);
+
+  const handleBoost = () => {
+    const expiry = Date.now() + 30 * 60 * 1000;
+    setBoostExpiry(expiry);
+    setBoostNow(Date.now());
+    localStorage.setItem("bandhan_boost_expiry", String(expiry));
+  };
+
+  const boostRemaining = boostExpiry ? Math.max(0, boostExpiry - boostNow) : 0;
+  const boostMins = Math.floor(boostRemaining / 60000);
+  const boostSecs = Math.floor((boostRemaining % 60000) / 1000);
+  const isBoosted = boostExpiry !== null && boostRemaining > 0;
+
+  // Story highlights
+  const myHighlights = allStories.filter((s) => {
+    try {
+      const key = `story_highlights_${s.userId.toString()}`;
+      const stored = localStorage.getItem(key);
+      if (!stored) return false;
+      const ids: string[] = JSON.parse(stored);
+      return ids.includes(s.id.toString());
+    } catch {
+      return false;
+    }
+  });
+
   const photoFileRef = useRef<HTMLInputElement>(null);
   const mediaFileRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Privacy visibility from backend
   const { data: backendVisibility } = usePrivacyVisibility();
   const setPrivacyVisibilityMutation = useSetPrivacyVisibility();
-
-  // Local UI visibility state — synced from backend once loaded
   const [visibility, setVisibility] = useState<VisibilityOption>("everyone");
 
-  // Sync backend visibility to local state once loaded
   useEffect(() => {
     if (backendVisibility) {
       const uiVal = BACKEND_TO_UI[backendVisibility] as
@@ -118,7 +280,6 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
     }
   }, [backendVisibility]);
 
-  // Premium and last active from backend
   const { data: backendPremium = false } = usePremiumStatus();
   const { data: backendShowLastActive = true } = useShowLastActive();
   const setPremiumMutation = useSetPremiumStatus();
@@ -126,7 +287,6 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
   const [showLastActive, setShowLastActive] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
 
-  // Sync backend values to local state
   useEffect(() => {
     setIsPremium(backendPremium);
   }, [backendPremium]);
@@ -316,9 +476,46 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
     ? ([p.photoUrl, ...p.mediaUrls].filter(Boolean) as string[])
     : [];
 
+  // Profile completion
+  const completionFields = p
+    ? ([
+        ["Name", !!p.name],
+        ["Age", !!p.age],
+        ["Bio", !!p.bio],
+        ["Photo", !!p.photoUrl],
+        ["Occupation", !!p.occupation],
+        ["Height", !!p.height],
+        ["Religion", !!p.religion],
+        ["Location", !!p.location],
+        ["Mother Tongue", !!p.motherTongue],
+        ["Marital Status", !!p.maritalStatus],
+        ["Education", !!p.education],
+        ["Interests", p.interests.length > 0],
+        ["Hobbies", p.hobbies.length > 0],
+        ["Gallery", p.mediaUrls.length > 0],
+        ["Movies", p.favoriteMovies.length > 0],
+        ["Songs", p.favoriteSongs.length > 0],
+        ["Thoughts", !!p.thoughts],
+        ["Mood", !!p.mood],
+        ["About Me", !!p.aboutMe],
+        ["Phone", !!(p as any).phone],
+      ] as [string, boolean][])
+    : [];
+  const filledCount = completionFields.filter(([, v]) => v).length;
+  const completionPct =
+    completionFields.length > 0
+      ? Math.round((filledCount / completionFields.length) * 100)
+      : 0;
+  const missingFields = completionFields
+    .filter(([, v]) => !v)
+    .map(([k]) => k)
+    .slice(0, 3);
+
+  // Views this week (deterministic)
+  const weekViews = p ? (p.userId.toString().charCodeAt(0) % 47) + 12 : 0;
+
   return (
     <div className="min-h-screen pb-8" style={{ background: "#0a0010" }}>
-      {/* Hidden inputs */}
       <input
         ref={photoFileRef}
         type="file"
@@ -331,7 +528,7 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
       <div className="relative h-56">
         {photoPreview || p?.photoUrl ? (
           <img
-            src={photoPreview || p?.photoUrl}
+            src={photoPreview || p?.photoUrl || undefined}
             alt={p?.name}
             className="w-full h-full object-cover"
           />
@@ -349,7 +546,6 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
             background: "linear-gradient(to top,#0a0010 20%,transparent)",
           }}
         />
-        {/* Premium badge on hero */}
         {isPremium && (
           <div
             className="absolute top-14 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full"
@@ -362,83 +558,351 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
             <span className="text-white text-xs font-bold">Premium Member</span>
           </div>
         )}
-        <div className="absolute top-12 right-4 flex gap-2">
-          {editing && (
+
+        {/* TWO-ROW button layout */}
+        <div className="absolute top-12 right-4 flex flex-col items-end gap-1.5">
+          {/* Row 1: Edit | Call History | Logout */}
+          <div className="flex gap-1.5">
+            {editing && (
+              <button
+                type="button"
+                onClick={() => photoFileRef.current?.click()}
+                data-ocid="myprofile.upload_button"
+                className="px-3 py-2 rounded-full flex items-center gap-1.5 text-sm text-white"
+                style={{
+                  background: "rgba(0,0,0,0.6)",
+                  backdropFilter: "blur(8px)",
+                }}
+                disabled={uploading}
+              >
+                <Camera className="w-3.5 h-3.5" />
+                {uploading ? "..." : "Photo"}
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => photoFileRef.current?.click()}
-              data-ocid="myprofile.upload_button"
-              className="px-3 py-2 rounded-full flex items-center gap-1.5 text-sm text-white"
+              onClick={() => setEditing((e) => !e)}
+              data-ocid="myprofile.edit_button"
+              className="px-4 py-2 rounded-full flex items-center gap-2 text-sm text-white font-medium"
               style={{
-                background: "rgba(0,0,0,0.6)",
+                background: editing
+                  ? "linear-gradient(135deg,#e11d48,#7c3aed)"
+                  : "rgba(0,0,0,0.5)",
                 backdropFilter: "blur(8px)",
               }}
-              disabled={uploading}
             >
-              <Camera className="w-3.5 h-3.5" />
-              {uploading ? "..." : "Photo"}
+              {editing ? (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  Editing
+                </>
+              ) : (
+                <>
+                  <Edit3 className="w-3.5 h-3.5" />
+                  Edit
+                </>
+              )}
             </button>
+            <button
+              type="button"
+              onClick={onCallHistory}
+              data-ocid="myprofile.secondary_button"
+              className="px-3 py-2 rounded-full flex items-center gap-2 text-sm text-white/70"
+              style={{
+                background: "rgba(0,0,0,0.5)",
+                backdropFilter: "blur(8px)",
+              }}
+              title="Call History"
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.removeItem("bandhan_session");
+                logout();
+              }}
+              data-ocid="myprofile.secondary_button"
+              className="px-3 py-2 rounded-full flex items-center gap-2 text-sm text-white/70"
+              style={{
+                background: "rgba(0,0,0,0.5)",
+                backdropFilter: "blur(8px)",
+              }}
+              title="Logout"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {/* Row 2: Go Live | Suggestions | Gift History */}
+          {(onGoLive || onSuggestions || onGiftHistory) && (
+            <div className="flex gap-1.5">
+              {onGoLive && (
+                <button
+                  type="button"
+                  onClick={onGoLive}
+                  data-ocid="myprofile.primary_button"
+                  className="px-3 py-2 rounded-full flex items-center gap-1.5 text-sm font-bold text-white"
+                  style={{
+                    background: "linear-gradient(135deg,#e11d48,#dc2626)",
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  Go Live
+                </button>
+              )}
+              {onSuggestions && (
+                <button
+                  type="button"
+                  onClick={onSuggestions}
+                  data-ocid="myprofile.secondary_button"
+                  className="px-3 py-2 rounded-full flex items-center gap-1.5 text-sm font-medium text-white"
+                  style={{
+                    background: "rgba(124,58,237,0.6)",
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  ✨ Suggestions
+                </button>
+              )}
+              {onGiftHistory && (
+                <button
+                  type="button"
+                  onClick={onGiftHistory}
+                  data-ocid="myprofile.secondary_button"
+                  className="px-3 py-2 rounded-full flex items-center gap-1.5 text-sm font-medium text-white"
+                  style={{
+                    background: "rgba(225,29,72,0.45)",
+                    backdropFilter: "blur(8px)",
+                  }}
+                  title="Gift History"
+                >
+                  🎁 Gifts
+                </button>
+              )}
+            </div>
           )}
-          <button
-            type="button"
-            onClick={() => setEditing((e) => !e)}
-            data-ocid="myprofile.edit_button"
-            className="px-4 py-2 rounded-full flex items-center gap-2 text-sm text-white font-medium"
-            style={{
-              background: editing
-                ? "linear-gradient(135deg,#e11d48,#7c3aed)"
-                : "rgba(0,0,0,0.5)",
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            {editing ? (
-              <>
-                <Save className="w-3.5 h-3.5" />
-                Editing
-              </>
-            ) : (
-              <>
-                <Edit3 className="w-3.5 h-3.5" />
-                Edit
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={onCallHistory}
-            data-ocid="myprofile.secondary_button"
-            className="px-4 py-2 rounded-full flex items-center gap-2 text-sm text-white/70"
-            style={{
-              background: "rgba(0,0,0,0.5)",
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            <PhoneCall className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={logout}
-            data-ocid="myprofile.secondary_button"
-            className="px-4 py-2 rounded-full flex items-center gap-2 text-sm text-white/70"
-            style={{
-              background: "rgba(0,0,0,0.5)",
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            <LogOut className="w-3.5 h-3.5" />
-          </button>
         </div>
+
         {p && (
           <div className="absolute bottom-4 left-5">
             <h1 className="text-2xl font-bold text-white">
               {p.name}, {Number(p.age)}
             </h1>
             <p className="text-white/60 text-sm">📍 {p.location}</p>
+            {localMood && (
+              <span
+                className="inline-flex items-center px-3 py-1 rounded-full text-xs text-white mt-1.5"
+                style={{
+                  background: "oklch(0.65 0.22 10 / 0.5)",
+                  backdropFilter: "blur(4px)",
+                }}
+              >
+                {localMood}
+              </span>
+            )}
           </div>
         )}
       </div>
 
       <div className="px-5 space-y-5 mt-4">
+        {/* Profile Completion Bar */}
+        {p && completionPct < 100 && (
+          <div
+            className="rounded-2xl p-4"
+            style={{
+              background: "oklch(0.13 0.05 300)",
+              border: "1px solid oklch(0.22 0.07 300)",
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-white/70 text-sm font-semibold">
+                Profile {completionPct}% complete
+              </span>
+              <span
+                className="text-xs"
+                style={{
+                  color:
+                    completionPct >= 80
+                      ? "#4ade80"
+                      : completionPct >= 50
+                        ? "#fbbf24"
+                        : "#fb7185",
+                }}
+              >
+                {completionPct >= 80
+                  ? "Almost there!"
+                  : completionPct >= 50
+                    ? "Good progress"
+                    : "Just starting"}
+              </span>
+            </div>
+            <div
+              className="w-full h-2 rounded-full overflow-hidden"
+              style={{ background: "oklch(0.2 0.05 300)" }}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${completionPct}%`,
+                  background: "linear-gradient(90deg,#e11d48,#7c3aed)",
+                }}
+              />
+            </div>
+            {missingFields.length > 0 && (
+              <p className="text-white/40 text-xs mt-2">
+                Add: {missingFields.join(", ")} to complete your profile
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Relationship Goal Badge */}
+        {p && relGoal && !editing && (
+          <div className="flex items-center gap-2">
+            <span
+              className="px-4 py-1.5 rounded-full text-sm font-semibold text-white"
+              style={{ background: "linear-gradient(135deg,#7c3aed,#2563eb)" }}
+            >
+              💍 {relGoal}
+            </span>
+          </div>
+        )}
+
+        {/* Stats Row */}
+        {p && (
+          <div className="grid grid-cols-2 gap-2">
+            {/* Profile Views */}
+            <button
+              type="button"
+              onClick={() => setShowViewers(true)}
+              data-ocid="myprofile.button"
+              className="rounded-2xl p-3 flex flex-col items-center gap-1 transition-all active:scale-95"
+              style={{
+                background: "oklch(0.14 0.05 300)",
+                border: "1px solid oklch(0.22 0.07 300)",
+              }}
+            >
+              <Users className="w-5 h-5" style={{ color: "#a78bfa" }} />
+              <span className="text-white font-bold text-lg leading-none">
+                {Number(profileViewCount)}
+              </span>
+              <span className="text-white/50 text-[10px]">Profile Views</span>
+            </button>
+            {/* Super Liked By */}
+            <button
+              type="button"
+              onClick={() => setShowSuperLikedBy(true)}
+              data-ocid="myprofile.button"
+              className="rounded-2xl p-3 flex flex-col items-center gap-1 transition-all active:scale-95"
+              style={{
+                background: "oklch(0.14 0.05 300)",
+                border: "1px solid oklch(0.22 0.07 300)",
+              }}
+            >
+              <Star
+                className="w-5 h-5"
+                style={{ color: "#fbbf24", fill: "#fbbf24" }}
+              />
+              <span className="text-white font-bold text-lg leading-none">
+                {superLikedBy.length}
+              </span>
+              <span className="text-white/50 text-[10px]">Super Liked</span>
+            </button>
+            {/* Views This Week */}
+            <div
+              className="rounded-2xl p-3 flex flex-col items-center gap-1"
+              style={{
+                background: "oklch(0.14 0.05 300)",
+                border: "1px solid oklch(0.22 0.07 300)",
+              }}
+            >
+              <Eye className="w-5 h-5" style={{ color: "#34d399" }} />
+              <span className="text-white font-bold text-lg leading-none">
+                {weekViews}
+              </span>
+              <span className="text-white/50 text-[10px]">Views/Week</span>
+            </div>
+            {/* Boost */}
+            <button
+              type="button"
+              onClick={isBoosted ? undefined : handleBoost}
+              data-ocid="myprofile.button"
+              className="rounded-2xl p-3 flex flex-col items-center gap-1 transition-all active:scale-95"
+              style={{
+                background: isBoosted
+                  ? "linear-gradient(135deg,oklch(0.25 0.12 280),oklch(0.2 0.1 270))"
+                  : "oklch(0.14 0.05 300)",
+                border: isBoosted
+                  ? "1px solid oklch(0.5 0.15 280 / 0.5)"
+                  : "1px solid oklch(0.22 0.07 300)",
+              }}
+            >
+              <Rocket
+                className="w-5 h-5"
+                style={{ color: isBoosted ? "#c084fc" : "#6b7280" }}
+              />
+              {isBoosted ? (
+                <>
+                  <span className="text-white font-bold text-sm leading-none">
+                    {boostMins}:{boostSecs.toString().padStart(2, "0")}
+                  </span>
+                  <span className="text-white/50 text-[10px]">Boosted 🚀</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-white/60 text-sm leading-none font-medium">
+                    Boost
+                  </span>
+                  <span className="text-white/40 text-[10px]">30 min</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Story Highlights Row */}
+        {myHighlights.length > 0 && (
+          <div>
+            <p className="text-white/60 text-xs uppercase tracking-wider mb-3">
+              Highlights
+            </p>
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {myHighlights.map((story, i) => (
+                <button
+                  key={story.id.toString()}
+                  type="button"
+                  data-ocid={`myprofile.item.${i + 1}`}
+                  onClick={() => {
+                    setStoryViewerIndex(
+                      allStories.findIndex((s) => s.id === story.id),
+                    );
+                    setStoryViewerOpen(true);
+                  }}
+                  className="flex-shrink-0 flex flex-col items-center gap-1.5"
+                >
+                  <div
+                    className="w-14 h-14 rounded-full overflow-hidden"
+                    style={{
+                      border: "2px solid",
+                      borderColor: "oklch(0.65 0.22 10)",
+                    }}
+                  >
+                    <img
+                      src={story.imageUrl}
+                      alt={story.caption}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <span className="text-white/50 text-[9px] truncate w-14 text-center">
+                    {story.caption || "Story"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Privacy & Premium settings toggle */}
         <button
           type="button"
@@ -471,7 +935,6 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
             className="rounded-2xl p-4 space-y-5"
             style={{ background: "oklch(0.12 0.05 300)" }}
           >
-            {/* Profile Visibility */}
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <Eye className="w-4 h-4 text-white/50" />
@@ -514,7 +977,6 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
               </div>
             </div>
 
-            {/* Show Last Active */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Lock className="w-4 h-4 text-white/50" />
@@ -547,14 +1009,13 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
               </button>
             </div>
 
-            {/* Hide seen status */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <EyeOff className="w-4 h-4 text-white/50" />
                 <div>
                   <p className="text-white/80 text-sm">Hide Read Receipts</p>
                   <p className="text-white/40 text-xs">
-                    Don't show when you've read messages
+                    Don&apos;t show when you&apos;ve read messages
                   </p>
                 </div>
               </div>
@@ -566,7 +1027,6 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
               </div>
             </div>
 
-            {/* Premium membership */}
             <div
               className="rounded-xl p-3"
               style={{
@@ -615,10 +1075,7 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
                   className="px-3 py-1.5 rounded-lg text-xs font-bold"
                   style={
                     isPremium
-                      ? {
-                          background: "oklch(0.4 0.15 60)",
-                          color: "white",
-                        }
+                      ? { background: "oklch(0.4 0.15 60)", color: "white" }
                       : {
                           background: "linear-gradient(135deg,#f59e0b,#d97706)",
                           color: "white",
@@ -629,6 +1086,70 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
                 </button>
               </div>
             </div>
+
+            {/* Blocked Users */}
+            <button
+              type="button"
+              onClick={() => setShowBlocked((s) => !s)}
+              data-ocid="myprofile.toggle"
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-white"
+              style={{
+                background: "oklch(0.15 0.04 300)",
+                border: "1px solid oklch(0.25 0.05 300)",
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <X className="w-4 h-4 text-red-400" />
+                <span className="text-sm text-white/80">Blocked Users</span>
+                {blockedUsers.length > 0 && (
+                  <span
+                    className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
+                    style={{ background: "#e11d48" }}
+                  >
+                    {blockedUsers.length}
+                  </span>
+                )}
+              </div>
+              <span className="text-white/40 text-xs">
+                {showBlocked ? "▲" : "▼"}
+              </span>
+            </button>
+            {showBlocked && (
+              <div className="space-y-2">
+                {blockedUsers.length === 0 ? (
+                  <p
+                    className="text-white/40 text-sm text-center py-3"
+                    data-ocid="myprofile.empty_state"
+                  >
+                    No blocked users
+                  </p>
+                ) : (
+                  blockedUsers.map((uid, i) => (
+                    <div
+                      key={uid}
+                      data-ocid={`myprofile.item.${i + 1}`}
+                      className="flex items-center justify-between px-3 py-2.5 rounded-xl"
+                      style={{ background: "oklch(0.16 0.05 300)" }}
+                    >
+                      <span className="text-white/70 text-sm truncate flex-1">
+                        {uid}
+                      </span>
+                      <button
+                        type="button"
+                        data-ocid={`myprofile.secondary_button.${i + 1}`}
+                        onClick={() => handleUnblock(uid)}
+                        className="ml-2 px-3 py-1 rounded-lg text-xs font-medium text-white flex-shrink-0"
+                        style={{
+                          background: "linear-gradient(135deg,#e11d48,#7c3aed)",
+                        }}
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -637,11 +1158,40 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
             {p?.bio && <Section title="About">{p.bio}</Section>}
             {p?.aboutMe && <Section title="About Me">{p.aboutMe}</Section>}
             {p?.thoughts && (
-              <Section title="Life Philosophy">"{p.thoughts}"</Section>
+              <Section title="Life Philosophy">
+                &ldquo;{p.thoughts}&rdquo;
+              </Section>
             )}
             {(p as any)?.phone && (
               <Section title="Phone">{(p as any).phone}</Section>
             )}
+
+            {/* Icebreakers Q&A */}
+            {icebreakers.some((ib) => ib.q && ib.a) && (
+              <div>
+                <p className="text-white/60 text-sm font-semibold mb-2">
+                  🧠 Icebreakers
+                </p>
+                <div className="space-y-2">
+                  {icebreakers
+                    .filter((ib) => ib.q && ib.a)
+                    .map((ib, i) => (
+                      <div
+                        key={ib.q || String(i)}
+                        className="rounded-2xl p-4"
+                        style={{
+                          background: "oklch(0.14 0.05 300)",
+                          border: "1px solid oklch(0.22 0.07 300)",
+                        }}
+                      >
+                        <p className="text-white/50 text-xs mb-1">{ib.q}</p>
+                        <p className="text-white text-sm font-medium">{ib.a}</p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-2">
               {[
                 ["Height", p?.height],
@@ -681,7 +1231,7 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
             )}
             {p?.favoriteMovies && p.favoriteMovies.length > 0 && (
               <TagSection
-                title="🎬 Favorite Movies"
+                title="🎥 Favorite Movies"
                 tags={p.favoriteMovies}
                 grad="135deg,#e11d48,#db2777"
               />
@@ -700,16 +1250,22 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
                 </p>
                 <div className="grid grid-cols-3 gap-1.5">
                   {allMedia.slice(1).map((url, i) => (
-                    <div
+                    <button
                       key={url || `gal-${i}`}
-                      className="aspect-square rounded-xl overflow-hidden"
+                      type="button"
+                      data-ocid={`myprofile.item.${i + 1}`}
+                      onClick={() => {
+                        setLightboxIndex(i + 1);
+                        setLightboxOpen(true);
+                      }}
+                      className="aspect-square rounded-xl overflow-hidden active:scale-95 transition-transform"
                     >
                       <img
                         src={url}
                         alt=""
                         className="w-full h-full object-cover"
                       />
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -832,13 +1388,126 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
                 data-ocid="myprofile.input"
               />
             </F>
-            <F label="Mood">
+            <F label="Mood (backend field)">
               <Input
                 value={mood}
                 onChange={(e) => setMood(e.target.value)}
                 data-ocid="myprofile.input"
               />
             </F>
+
+            {/* Mood Status Picker */}
+            <div>
+              <Label className="text-white/70 text-sm mb-2 block">
+                💟 My Status
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {MOOD_OPTIONS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => saveMood(m)}
+                    data-ocid="myprofile.toggle"
+                    className="px-3 py-1.5 rounded-full text-sm transition-all text-white"
+                    style={
+                      localMood === m
+                        ? {
+                            background:
+                              "linear-gradient(135deg,#e11d48,#7c3aed)",
+                          }
+                        : {
+                            background: "oklch(0.18 0.05 300)",
+                            border: "1px solid oklch(0.28 0.06 300)",
+                          }
+                    }
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Relationship Goal */}
+            <div>
+              <Label className="text-white/70 text-sm mb-2 block">
+                💍 Relationship Goal
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {GOAL_OPTIONS.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => saveGoal(g)}
+                    data-ocid="myprofile.toggle"
+                    className="px-3 py-1.5 rounded-full text-sm transition-all text-white"
+                    style={
+                      relGoal === g
+                        ? {
+                            background:
+                              "linear-gradient(135deg,#7c3aed,#2563eb)",
+                          }
+                        : {
+                            background: "oklch(0.18 0.05 300)",
+                            border: "1px solid oklch(0.28 0.06 300)",
+                          }
+                    }
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Icebreakers */}
+            <div>
+              <Label className="text-white/70 text-sm mb-2 block">
+                🧠 Icebreakers
+              </Label>
+              <div className="space-y-3">
+                {icebreakers.map((ib, i) => (
+                  <div
+                    key={String(i)}
+                    className="rounded-2xl p-3 space-y-2"
+                    style={{ background: "oklch(0.14 0.05 300)" }}
+                  >
+                    <Select
+                      value={ib.q}
+                      onValueChange={(v) => {
+                        const next = [...icebreakers];
+                        next[i] = { ...next[i], q: v };
+                        saveIcebreakers(next);
+                      }}
+                    >
+                      <SelectTrigger
+                        data-ocid="myprofile.select"
+                        className="text-white/70 border-white/20 bg-transparent"
+                      >
+                        <SelectValue placeholder="Pick a question..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ICEBREAKER_QUESTIONS.map((q) => (
+                          <SelectItem key={q} value={q}>
+                            {q}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      value={ib.a}
+                      onChange={(e) => {
+                        const next = [...icebreakers];
+                        next[i] = { ...next[i], a: e.target.value };
+                        saveIcebreakers(next);
+                      }}
+                      placeholder="Your answer..."
+                      data-ocid="myprofile.input"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Interests */}
             <div>
               <Label className="text-white/70 text-sm mb-2 block">
                 Interests
@@ -953,7 +1622,7 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
                             className="w-full h-full flex items-center justify-center"
                             style={{ background: "oklch(0.16 0.06 300)" }}
                           >
-                            <span className="text-3xl">🎬</span>
+                            <span className="text-3xl">🎥</span>
                           </div>
                         ) : (
                           <img
@@ -1011,8 +1680,157 @@ export default function MyProfilePage({ onCallHistory }: MyProfilePageProps) {
           </>
         )}
       </div>
+
+      {lightboxOpen && allMedia.length > 0 && (
+        <GalleryLightbox
+          images={allMedia}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
+
+      {/* Profile Viewers Sheet */}
+      <Sheet open={showViewers} onOpenChange={setShowViewers}>
+        <SheetContent
+          side="bottom"
+          data-ocid="myprofile.sheet"
+          className="rounded-t-3xl border-0 pb-8"
+          style={{
+            background: "#0a0010",
+            maxHeight: "75vh",
+            overflowY: "auto",
+          }}
+        >
+          <SheetHeader className="mb-4">
+            <SheetTitle className="text-white text-lg">
+              👁 Profile Viewers ({Number(profileViewCount)})
+            </SheetTitle>
+          </SheetHeader>
+          {profileViewers.length === 0 ? (
+            <div className="text-center py-8" data-ocid="myprofile.empty_state">
+              <p className="text-white/40 text-sm">No views yet</p>
+              <p className="text-white/30 text-xs mt-1">
+                Only matches who viewed you appear here
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {profileViewers.map(([viewer, ts], i) => (
+                <div
+                  key={viewer.userId.toString()}
+                  data-ocid={`myprofile.item.${i + 1}`}
+                  className="flex items-center gap-3 px-1"
+                >
+                  <Avatar className="w-12 h-12">
+                    <AvatarImage src={viewer.photoUrl ?? ""} />
+                    <AvatarFallback
+                      style={{
+                        background: "linear-gradient(135deg,#e11d48,#7c3aed)",
+                      }}
+                    >
+                      {viewer.name.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <p className="text-white font-medium text-sm">
+                      {viewer.name}, {Number(viewer.age)}
+                    </p>
+                    <p className="text-white/40 text-xs">
+                      📍 {viewer.location}
+                    </p>
+                  </div>
+                  <span className="text-white/30 text-xs">
+                    {timeAgo(Number(ts))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Super Liked By Sheet */}
+      <Sheet open={showSuperLikedBy} onOpenChange={setShowSuperLikedBy}>
+        <SheetContent
+          side="bottom"
+          data-ocid="myprofile.sheet"
+          className="rounded-t-3xl border-0 pb-8"
+          style={{
+            background: "#0a0010",
+            maxHeight: "75vh",
+            overflowY: "auto",
+          }}
+        >
+          <SheetHeader className="mb-4">
+            <SheetTitle className="text-white text-lg">
+              ⭐ Super Liked By ({superLikedBy.length})
+            </SheetTitle>
+          </SheetHeader>
+          {superLikedBy.length === 0 ? (
+            <div className="text-center py-8" data-ocid="myprofile.empty_state">
+              <p className="text-white/40 text-sm">No super likes yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {superLikedBy.map((viewer, i) => (
+                <div
+                  key={viewer.userId.toString()}
+                  data-ocid={`myprofile.item.${i + 1}`}
+                  className="flex items-center gap-3 px-1"
+                >
+                  <Avatar className="w-12 h-12">
+                    <AvatarImage src={viewer.photoUrl ?? ""} />
+                    <AvatarFallback
+                      style={{
+                        background: "linear-gradient(135deg,#f59e0b,#d97706)",
+                      }}
+                    >
+                      {viewer.name.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <p className="text-white font-medium text-sm">
+                      {viewer.name}, {Number(viewer.age)}
+                    </p>
+                    <p className="text-white/40 text-xs">
+                      📍 {viewer.location}
+                    </p>
+                  </div>
+                  <Star
+                    className="w-4 h-4 flex-shrink-0"
+                    style={{ color: "#fbbf24", fill: "#fbbf24" }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {storyViewerOpen && allStories.length > 0 && (
+        <StoryViewerModal
+          stories={allStories}
+          initialIndex={storyViewerIndex}
+          onClose={() => setStoryViewerOpen(false)}
+        />
+      )}
+
+      <div className="h-4" />
+      <footer className="text-center text-white/30 text-xs pb-6">
+        © {new Date().getFullYear()}. I would ❤️ using Bandhan
+      </footer>
     </div>
   );
+}
+
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 function Section({

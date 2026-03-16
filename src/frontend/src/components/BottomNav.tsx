@@ -12,12 +12,14 @@ interface BottomNavProps {
   currentPage: Page;
   onNavigate: (page: Page) => void;
   isAdmin: boolean;
+  messageRequestCount?: number;
 }
 
 export default function BottomNav({
   currentPage,
   onNavigate,
   isAdmin,
+  messageRequestCount = 0,
 }: BottomNavProps) {
   const navItems = [
     { id: "browse" as Page, icon: Compass, label: "Browse" },
@@ -52,6 +54,8 @@ export default function BottomNav({
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentPage === item.id;
+          const showBadge = item.id === "chat" && messageRequestCount > 0;
+          const badgeCount = messageRequestCount;
           return (
             <button
               type="button"
@@ -90,6 +94,25 @@ export default function BottomNav({
                       : { color: "oklch(0.5 0.05 330)", strokeWidth: 1.7 }
                   }
                 />
+                {/* Message request badge */}
+                {showBadge && (
+                  <span
+                    className="absolute -top-1 -right-1 flex items-center justify-center rounded-full font-bold"
+                    style={{
+                      background: "#e11d48",
+                      minWidth: badgeCount >= 10 ? "16px" : "16px",
+                      height: "16px",
+                      fontSize: "9px",
+                      color: "#fff",
+                      paddingLeft: badgeCount >= 10 ? "3px" : "0",
+                      paddingRight: badgeCount >= 10 ? "3px" : "0",
+                      lineHeight: 1,
+                      boxShadow: "0 0 6px #e11d48aa",
+                    }}
+                  >
+                    {badgeCount >= 10 ? "9+" : badgeCount}
+                  </span>
+                )}
               </span>
               <span
                 className="text-[10px] font-semibold leading-none transition-all duration-200"

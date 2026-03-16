@@ -6,37 +6,54 @@ import type {
   CallStatus,
   CallType,
   Gender,
-  Message,
+  MessageWithMeta,
   Profile,
   Story,
   StoryComment,
+  StoryNotification,
 } from "../backend";
-import { useActor } from "./useActor";
+import { useAppActor as useActor } from "./useAppActor";
 
 // PrivacyVisibility type — matches backend enum values
 export type PrivacyVisibility = "everyone" | "matchesOnly" | "hidden";
 
 export function useCallerProfile() {
-  const { actor, isFetching } = useActor();
+  const { actor, isFetching, principalStr } = useActor();
   return useQuery<Profile | null>({
-    queryKey: ["callerProfile"],
+    queryKey: ["callerProfile", principalStr],
     queryFn: async () => {
       if (!actor) return null;
-      return actor.getCallerUserProfile();
+      try {
+        return await actor.getCallerUserProfile();
+      } catch {
+        return null;
+      }
     },
     enabled: !!actor && !isFetching,
+    retry: 3,
+    staleTime: 0,
+    refetchOnMount: true,
   });
 }
 
 export function useAllProfiles() {
-  const { actor, isFetching } = useActor();
+  const { actor, isFetching, principalStr } = useActor();
   return useQuery<Profile[]>({
-    queryKey: ["allProfiles"],
+    queryKey: ["allProfiles", principalStr],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getAllProfiles();
+      try {
+        return await actor.getAllProfiles();
+      } catch {
+        return [];
+      }
     },
     enabled: !!actor && !isFetching,
+    retry: 2,
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000,
   });
 }
 
@@ -54,56 +71,80 @@ export function useSearchProfiles(searchTerm: string) {
 }
 
 export function useMatchRequests() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Array<[Profile, string]>>({
     queryKey: ["matchRequests"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getMatchRequests() as Promise<Array<[Profile, string]>>;
+      try {
+        return (await actor.getMatchRequests()) as Array<[Profile, string]>;
+      } catch {
+        return [];
+      }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
+    retry: 2,
+    staleTime: 0,
   });
 }
 
 export function useMutualMatches() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Profile[]>({
     queryKey: ["mutualMatches"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getMutualMatches();
+      try {
+        return await actor.getMutualMatches();
+      } catch {
+        return [];
+      }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
+    retry: 2,
+    staleTime: 0,
   });
 }
 
 export function useIsAdmin() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<boolean>({
     queryKey: ["isAdmin"],
     queryFn: async () => {
       if (!actor) return false;
-      return actor.isCallerAdmin();
+      try {
+        return await actor.isCallerAdmin();
+      } catch {
+        return false;
+      }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
+    retry: 2,
+    staleTime: 0,
   });
 }
 
 export function useAdminProfiles() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Array<[Profile, bigint]>>({
     queryKey: ["adminProfiles"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getAllWithRequestedCount();
+      try {
+        return await actor.getAllWithRequestedCount();
+      } catch {
+        return [];
+      }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
+    retry: 2,
+    staleTime: 0,
   });
 }
 
 export function useMessages(withUserId: Principal | null, enabled = true) {
   const { actor, isFetching } = useActor();
-  return useQuery<Message[]>({
+  return useQuery<MessageWithMeta[]>({
     queryKey: ["messages", withUserId?.toString()],
     queryFn: async () => {
       if (!actor || !withUserId) return [];
@@ -115,14 +156,20 @@ export function useMessages(withUserId: Principal | null, enabled = true) {
 }
 
 export function useStories() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Story[]>({
     queryKey: ["stories"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getStories();
+      try {
+        return await actor.getStories();
+      } catch {
+        return [];
+      }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
+    retry: 2,
+    staleTime: 0,
     refetchInterval: 10000,
   });
 }
@@ -386,6 +433,25 @@ export function useAddStoryComment() {
   });
 }
 
+// --- Story Notifications ---
+
+export function useStoryNotifications() {
+  const { actor, isFetching } = useActor();
+  return useQuery<StoryNotification[]>({
+    queryKey: ["storyNotifications"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return (await actor.getMyStoryNotifications()) as StoryNotification[];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 10000,
+  });
+}
+
 // --- WebRTC, typing, call history ---
 
 export function useCallSignals(fromUserId: Principal | null) {
@@ -641,5 +707,276 @@ export function useSetShowLastActive() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["showLastActive"] });
     },
+  });
+}
+
+// --- Story new features ---
+
+export function useDeleteStory() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (storyId: bigint) => {
+      if (!actor) throw new Error("Not authenticated");
+      await actor.deleteStory(storyId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["stories"] });
+    },
+  });
+}
+
+export function useAdminDeleteStory() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (storyId: bigint) => {
+      if (!actor) throw new Error("Not authenticated");
+      await actor.adminDeleteStory(storyId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminStories"] });
+      queryClient.invalidateQueries({ queryKey: ["stories"] });
+    },
+  });
+}
+
+export function useAdminStories() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Story[]>({
+    queryKey: ["adminStories"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.adminGetAllStories();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useStoryReactions(storyId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<Array<[string, bigint]>>({
+    queryKey: ["storyReactions", storyId?.toString()],
+    queryFn: async () => {
+      if (!actor || storyId === null) return [];
+      return actor.getStoryReactions(storyId);
+    },
+    enabled: !!actor && !isFetching && storyId !== null,
+  });
+}
+
+export function useCallerStoryReaction(storyId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<string | null>({
+    queryKey: ["callerStoryReaction", storyId?.toString()],
+    queryFn: async () => {
+      if (!actor || storyId === null) return null;
+      return actor.getCallerStoryReaction(storyId);
+    },
+    enabled: !!actor && !isFetching && storyId !== null,
+  });
+}
+
+export function useAddStoryReaction() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      storyId,
+      emoji,
+    }: { storyId: bigint; emoji: string }) => {
+      if (!actor) throw new Error("Not authenticated");
+      await actor.addStoryReaction(storyId, emoji);
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({
+        queryKey: ["storyReactions", vars.storyId.toString()],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["callerStoryReaction", vars.storyId.toString()],
+      });
+    },
+  });
+}
+
+export function useStoryViewCount(storyId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<bigint>({
+    queryKey: ["storyViewCount", storyId?.toString()],
+    queryFn: async () => {
+      if (!actor || storyId === null) return BigInt(0);
+      return actor.getStoryViewCount(storyId);
+    },
+    enabled: !!actor && !isFetching && storyId !== null,
+  });
+}
+
+export function useStoryViewers(storyId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<Profile[]>({
+    queryKey: ["storyViewers", storyId?.toString()],
+    queryFn: async () => {
+      if (!actor || storyId === null) return [];
+      return actor.getStoryViewers(storyId);
+    },
+    enabled: !!actor && !isFetching && storyId !== null,
+  });
+}
+
+export function useRecordStoryView() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async (storyId: bigint) => {
+      if (!actor) throw new Error("Not authenticated");
+      await actor.recordStoryView(storyId);
+    },
+  });
+}
+
+// --- Profile Views ---
+export function useProfileViewCount() {
+  const { actor, isFetching } = useActor();
+  return useQuery<bigint>({
+    queryKey: ["profileViewCount"],
+    queryFn: async () => {
+      if (!actor) return BigInt(0);
+      return actor.getProfileViewCount();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useProfileViewers() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Array<[Profile, bigint]>>({
+    queryKey: ["profileViewers"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getProfileViewers();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useRecordProfileView() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async (userId: Principal) => {
+      if (!actor) return;
+      await actor.recordProfileView(userId);
+    },
+  });
+}
+
+// --- Super Like ---
+export function useHasSuperLiked(userId: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<boolean>({
+    queryKey: ["hasSuperLiked", userId?.toString()],
+    queryFn: async () => {
+      if (!actor || !userId) return false;
+      return actor.hasSuperLiked(userId);
+    },
+    enabled: !!actor && !isFetching && !!userId,
+  });
+}
+
+export function useSuperLikeUser() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: Principal) => {
+      if (!actor) throw new Error("Not authenticated");
+      await actor.superLikeUser(userId);
+    },
+    onSuccess: (_data, userId) => {
+      queryClient.invalidateQueries({
+        queryKey: ["hasSuperLiked", userId.toString()],
+      });
+      queryClient.invalidateQueries({ queryKey: ["superLikedBy"] });
+    },
+  });
+}
+
+export function useUnsuperLikeUser() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: Principal) => {
+      if (!actor) throw new Error("Not authenticated");
+      await actor.unsuperLikeUser(userId);
+    },
+    onSuccess: (_data, userId) => {
+      queryClient.invalidateQueries({
+        queryKey: ["hasSuperLiked", userId.toString()],
+      });
+      queryClient.invalidateQueries({ queryKey: ["superLikedBy"] });
+    },
+  });
+}
+
+export function useSuperLikedBy() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Profile[]>({
+    queryKey: ["superLikedBy"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getSuperLikedBy();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useSuperLikeNotifications() {
+  const { actor, isFetching } = useActor();
+  return useQuery<import("../backend").SuperLikeNotification[]>({
+    queryKey: ["superLikeNotifications"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getSuperLikeNotifications();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useSendGiftBackend() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      toUserId,
+      giftName,
+      giftEmoji,
+    }: { toUserId: Principal; giftName: string; giftEmoji: string }) => {
+      if (!actor) throw new Error("Not authenticated");
+      return actor.sendGift(toUserId, giftName, giftEmoji);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["giftsSent"] });
+    },
+  });
+}
+
+export function useGiftsSent() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["giftsSent"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getGiftsSent();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useGiftsReceived() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["giftsReceived"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getGiftsReceived();
+    },
+    enabled: !!actor && !isFetching,
   });
 }
