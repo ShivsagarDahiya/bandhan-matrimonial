@@ -646,45 +646,6 @@ export default function ChatPage({
         </div>
       </div>
 
-      {/* Message Requests row */}
-      {settings.messageRequests && (
-        <button
-          type="button"
-          data-ocid="chat.inbox_button"
-          onClick={() => onMessageRequests?.()}
-          className="w-full flex items-center gap-3 px-4 py-3 mb-2"
-        >
-          <div
-            className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{
-              background:
-                "linear-gradient(135deg,oklch(0.55 0.22 10),oklch(0.45 0.22 280))",
-            }}
-          >
-            <Inbox className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1 text-left">
-            <p className="text-white font-bold text-sm">Message Requests</p>
-            <p className="text-white/45 text-xs">
-              {msgRequestsCount > 0
-                ? `${msgRequestsCount} pending`
-                : "No pending requests"}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {msgRequestsCount > 0 && (
-              <span
-                className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center"
-                style={{ background: "#e11d48" }}
-              >
-                {msgRequestsCount}
-              </span>
-            )}
-            <ChevronRight className="w-4 h-4 text-white/40" />
-          </div>
-        </button>
-      )}
-
       {/* Active contacts row — skeleton while loading */}
       {storiesLoading || isLoading ? (
         <StoriesSkeletonRow />
