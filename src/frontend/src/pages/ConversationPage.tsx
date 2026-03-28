@@ -18,6 +18,7 @@ import {
   Phone,
   Pin,
   Reply,
+  Search,
   Send,
   Smile,
   Star,
@@ -163,6 +164,17 @@ export default function ConversationPage({
   const myPrincipal = identity?.getPrincipal().toString();
   const { data: rawMessages = [] } = useMessages(profile.userId, true);
   const messages = rawMessages as ExtMessage[];
+
+  // Compute last seen from message timestamps (simple online status)
+  const isRecentlyActive = (() => {
+    const theirMsgs = messages.filter(
+      (m) => m.fromUserId.toString() === profile.userId.toString(),
+    );
+    if (theirMsgs.length === 0) return false;
+    const last = theirMsgs[theirMsgs.length - 1];
+    const tsMs = Number(last.timestamp) / 1_000_000;
+    return Date.now() - tsMs < 15 * 60 * 1000;
+  })();
   const sendMessage = useSendMessage();
   const markRead = useMarkMessageRead();
   const setTypingMutation = useSetTyping();
@@ -206,6 +218,10 @@ export default function ConversationPage({
   // Gift state
   const [showGiftPicker, setShowGiftPicker] = useState(false);
   const [giftMessages, setGiftMessages] = useState<GiftMessage[]>([]);
+
+  // Message search
+  const [showMsgSearch, setShowMsgSearch] = useState(false);
+  const [msgSearch, setMsgSearch] = useState("");
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: ref scroll
   useEffect(() => {
@@ -433,11 +449,14 @@ export default function ConversationPage({
     setContextMenu(null);
   };
 
-  const visibleMessages = useMemo(
-    () =>
-      messages.filter((m) => !deletedIds.has(m.id.toString()) && !m.isDeleted),
-    [messages, deletedIds],
-  );
+  const visibleMessages = useMemo(() => {
+    const base = messages.filter(
+      (m) => !deletedIds.has(m.id.toString()) && !m.isDeleted,
+    );
+    if (!msgSearch.trim()) return base;
+    const q = msgSearch.toLowerCase();
+    return base.filter((m) => m.text.toLowerCase().includes(q));
+  }, [messages, deletedIds, msgSearch]);
 
   // Void to suppress unused warning
   void selfIsTyping;
@@ -513,8 +532,13 @@ export default function ConversationPage({
                       ))}
                     </span>
                   </span>
+                ) : isRecentlyActive ? (
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
+                    Online
+                  </span>
                 ) : (
-                  "Online"
+                  "Active recently"
                 )}
               </p>
               <p className="text-[10px] text-white/30 mt-0.5">
@@ -553,8 +577,55 @@ export default function ConversationPage({
                 style={{ color: "oklch(0.75 0.18 280)" }}
               />
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowMsgSearch((v) => !v);
+                setMsgSearch("");
+              }}
+              data-ocid="conversation.toggle"
+              className="w-9 h-9 rounded-full flex items-center justify-center transition-all"
+              style={{
+                background: showMsgSearch
+                  ? "linear-gradient(135deg,#e11d48,#7c3aed)"
+                  : "oklch(0.2 0.06 330)",
+                border: "1px solid oklch(0.3 0.08 330)",
+              }}
+            >
+              <Search className="w-4 h-4 text-white" />
+            </button>
           </div>
         </div>
+
+        {/* Message search bar */}
+        {showMsgSearch && (
+          <div
+            className="px-4 py-2 flex items-center gap-2 flex-shrink-0"
+            style={{
+              background: "oklch(0.12 0.05 320)",
+              borderBottom: "1px solid oklch(0.2 0.06 330 / 0.4)",
+            }}
+          >
+            <Search className="w-4 h-4 text-white/40 flex-shrink-0" />
+            <input
+              type="text"
+              placeholder="Search messages..."
+              value={msgSearch}
+              onChange={(e) => setMsgSearch(e.target.value)}
+              className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/30"
+              data-ocid="conversation.search_input"
+            />
+            {msgSearch && (
+              <button
+                type="button"
+                onClick={() => setMsgSearch("")}
+                className="text-white/40 hover:text-white/70"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Pinned Message Banner */}
         {pinnedMessage && (
@@ -605,6 +676,28 @@ export default function ConversationPage({
             const isMine = msg.fromUserId.toString() === myPrincipal;
             const msgId = msg.id.toString();
             const displayText = localEdits.get(msgId) ?? msg.text;
+            const highlightText = (text: string) => {
+              if (!msgSearch.trim()) return <span>{text}</span>;
+              const q = msgSearch.toLowerCase();
+              const idx = text.toLowerCase().indexOf(q);
+              if (idx === -1) return <span>{text}</span>;
+              return (
+                <span>
+                  {text.slice(0, idx)}
+                  <mark
+                    style={{
+                      background: "rgba(225,29,72,0.5)",
+                      color: "white",
+                      borderRadius: "2px",
+                      padding: "0 1px",
+                    }}
+                  >
+                    {text.slice(idx, idx + q.length)}
+                  </mark>
+                  {text.slice(idx + q.length)}
+                </span>
+              );
+            };
             const reaction = localReactions.get(msgId) ?? msg.reaction;
             const time = new Date(
               Number(msg.timestamp) / 1_000_000,
@@ -661,7 +754,7 @@ export default function ConversationPage({
                     onTouchEnd={cancelLongPress}
                     onTouchMove={cancelLongPress}
                   >
-                    {displayText}
+                    {highlightText(displayText)}
                     {isEdited && (
                       <span className="text-white/50 text-[9px] ml-1">
                         (edited)

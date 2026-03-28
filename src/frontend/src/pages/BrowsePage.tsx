@@ -154,6 +154,16 @@ export default function BrowsePage({
   const [pendingFilters, setPendingFilters] = useState<Filters>(defaultFilters);
 
   const [showSearch, setShowSearch] = useState(false);
+
+  // First-visit tutorial
+  const [showTutorial, setShowTutorial] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !localStorage.getItem("bandhan_tutorial_seen");
+  });
+  const dismissTutorial = () => {
+    localStorage.setItem("bandhan_tutorial_seen", "1");
+    setShowTutorial(false);
+  };
   const [liked, setLiked] = useState<Set<string>>(new Set());
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
   const [detectedCity, setDetectedCity] = useState<string | null>(null);
@@ -1055,6 +1065,80 @@ export default function BrowsePage({
               </div>
             </div>
           )}
+        </div>
+      )}
+      {showTutorial && (
+        <div
+          onClick={dismissTutorial}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " " || e.key === "Escape")
+              dismissTutorial();
+          }}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center"
+          style={{
+            background: "rgba(10,0,16,0.92)",
+            backdropFilter: "blur(8px)",
+          }}
+          data-ocid="browse.modal"
+        >
+          <div
+            className="mx-6 rounded-3xl p-8 flex flex-col items-center gap-6 text-center max-w-xs"
+            style={{
+              background: "oklch(0.14 0.07 320 / 0.95)",
+              border: "1px solid oklch(0.3 0.1 320 / 0.5)",
+            }}
+          >
+            <div className="text-4xl">💑</div>
+            <div>
+              <p className="text-white font-bold text-xl mb-1">How to Browse</p>
+              <p className="text-white/50 text-sm">
+                Swipe or tap to explore profiles
+              </p>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="flex flex-col items-center gap-2">
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center text-xl"
+                  style={{
+                    background: "linear-gradient(135deg,#374151,#1f2937)",
+                  }}
+                >
+                  ←
+                </div>
+                <span className="text-white/60 text-xs">Pass</span>
+              </div>
+              <div
+                className="w-16 h-16 rounded-full flex items-center justify-center text-3xl"
+                style={{
+                  background: "linear-gradient(135deg,#e11d48,#7c3aed)",
+                  boxShadow: "0 4px 20px rgba(225,29,72,0.4)",
+                }}
+              >
+                ❤️
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center text-xl"
+                  style={{
+                    background: "linear-gradient(135deg,#e11d48,#7c3aed)",
+                  }}
+                >
+                  →
+                </div>
+                <span className="text-white/60 text-xs">Like</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={dismissTutorial}
+              data-ocid="browse.close_button"
+              className="px-8 py-3 rounded-full text-white font-semibold text-sm"
+              style={{ background: "linear-gradient(135deg,#e11d48,#7c3aed)" }}
+            >
+              Got it! Let's go 🚀
+            </button>
+            <p className="text-white/30 text-xs">Tap anywhere to dismiss</p>
+          </div>
         </div>
       )}
     </div>

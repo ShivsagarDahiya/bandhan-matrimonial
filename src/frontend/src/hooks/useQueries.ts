@@ -18,7 +18,7 @@ import { useAppActor as useActor } from "./useAppActor";
 export type PrivacyVisibility = "everyone" | "matchesOnly" | "hidden";
 
 export function useCallerProfile() {
-  const { actor, isFetching, principalStr } = useActor();
+  const { actor, principalStr } = useActor();
   return useQuery<Profile | null>({
     queryKey: ["callerProfile", principalStr],
     queryFn: async () => {
@@ -29,7 +29,7 @@ export function useCallerProfile() {
         return null;
       }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
     retry: 3,
     staleTime: 0,
     refetchOnMount: true,
@@ -37,7 +37,7 @@ export function useCallerProfile() {
 }
 
 export function useAllProfiles() {
-  const { actor, isFetching, principalStr } = useActor();
+  const { actor, principalStr } = useActor();
   return useQuery<Profile[]>({
     queryKey: ["allProfiles", principalStr],
     queryFn: async () => {
@@ -48,7 +48,7 @@ export function useAllProfiles() {
         return [];
       }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
     retry: 2,
     staleTime: 0,
     refetchOnMount: true,
@@ -58,7 +58,7 @@ export function useAllProfiles() {
 }
 
 export function useSearchProfiles(searchTerm: string) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Profile[]>({
     queryKey: ["searchProfiles", searchTerm],
     queryFn: async () => {
@@ -66,7 +66,7 @@ export function useSearchProfiles(searchTerm: string) {
       if (!searchTerm.trim()) return actor.getAllProfiles();
       return actor.searchProfiles(searchTerm);
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }
 
@@ -143,14 +143,14 @@ export function useAdminProfiles() {
 }
 
 export function useMessages(withUserId: Principal | null, enabled = true) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<MessageWithMeta[]>({
     queryKey: ["messages", withUserId?.toString()],
     queryFn: async () => {
       if (!actor || !withUserId) return [];
       return actor.getMessages(withUserId);
     },
-    enabled: !!actor && !isFetching && !!withUserId && enabled,
+    enabled: !!actor && !!withUserId && enabled,
     refetchInterval: 3000,
   });
 }
@@ -175,27 +175,27 @@ export function useStories() {
 }
 
 export function useStoryComments(storyId: bigint | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<StoryComment[]>({
     queryKey: ["storyComments", storyId?.toString()],
     queryFn: async () => {
       if (!actor || storyId === null) return [];
       return actor.getStoryComments(storyId);
     },
-    enabled: !!actor && !isFetching && storyId !== null,
+    enabled: !!actor && storyId !== null,
     refetchInterval: 3000,
   });
 }
 
 export function useHasLikedStory(storyId: bigint | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<boolean>({
     queryKey: ["hasLikedStory", storyId?.toString()],
     queryFn: async () => {
       if (!actor || storyId === null) return false;
       return actor.hasLikedStory(storyId);
     },
-    enabled: !!actor && !isFetching && storyId !== null,
+    enabled: !!actor && storyId !== null,
   });
 }
 
@@ -367,14 +367,14 @@ export function useAdminDeleteProfile() {
 }
 
 export function useGetProfile(userId: Principal | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Profile | null>({
     queryKey: ["profile", userId?.toString()],
     queryFn: async () => {
       if (!actor || !userId) return null;
       return actor.getUserProfile(userId);
     },
-    enabled: !!actor && !isFetching && !!userId,
+    enabled: !!actor && !!userId,
   });
 }
 
@@ -436,7 +436,7 @@ export function useAddStoryComment() {
 // --- Story Notifications ---
 
 export function useStoryNotifications() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<StoryNotification[]>({
     queryKey: ["storyNotifications"],
     queryFn: async () => {
@@ -447,7 +447,7 @@ export function useStoryNotifications() {
         return [];
       }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
     refetchInterval: 10000,
   });
 }
@@ -455,42 +455,42 @@ export function useStoryNotifications() {
 // --- WebRTC, typing, call history ---
 
 export function useCallSignals(fromUserId: Principal | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<CallSignal[]>({
     queryKey: ["callSignals", fromUserId?.toString()],
     queryFn: async () => {
       if (!actor || !fromUserId) return [];
       return actor.consumeCallSignals(fromUserId);
     },
-    enabled: !!actor && !isFetching && !!fromUserId,
+    enabled: !!actor && !!fromUserId,
     refetchInterval: 1500,
     staleTime: 0,
   });
 }
 
 export function useTypingStatus(fromUserId: Principal | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<boolean>({
     queryKey: ["typingStatus", fromUserId?.toString()],
     queryFn: async () => {
       if (!actor || !fromUserId) return false;
       return actor.getTypingStatus(fromUserId);
     },
-    enabled: !!actor && !isFetching && !!fromUserId,
+    enabled: !!actor && !!fromUserId,
     refetchInterval: 2000,
     staleTime: 0,
   });
 }
 
 export function useCallHistory() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Array<[CallHistory, Profile]>>({
     queryKey: ["callHistory"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getCallHistory();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }
 
@@ -566,7 +566,7 @@ export function useLogCall() {
 }
 
 export function usePrivacyVisibility() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<PrivacyVisibility>({
     queryKey: ["privacyVisibility"],
     queryFn: async () => {
@@ -579,7 +579,7 @@ export function usePrivacyVisibility() {
         return "everyone" as PrivacyVisibility;
       }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -649,7 +649,7 @@ export function useDeleteMessage() {
 }
 
 export function usePremiumStatus() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<boolean>({
     queryKey: ["premiumStatus"],
     queryFn: async () => {
@@ -660,7 +660,7 @@ export function usePremiumStatus() {
         return false;
       }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -680,7 +680,7 @@ export function useSetPremiumStatus() {
 }
 
 export function useShowLastActive() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<boolean>({
     queryKey: ["showLastActive"],
     queryFn: async () => {
@@ -691,7 +691,7 @@ export function useShowLastActive() {
         return true;
       }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -742,38 +742,38 @@ export function useAdminDeleteStory() {
 }
 
 export function useAdminStories() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Story[]>({
     queryKey: ["adminStories"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.adminGetAllStories();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }
 
 export function useStoryReactions(storyId: bigint | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Array<[string, bigint]>>({
     queryKey: ["storyReactions", storyId?.toString()],
     queryFn: async () => {
       if (!actor || storyId === null) return [];
       return actor.getStoryReactions(storyId);
     },
-    enabled: !!actor && !isFetching && storyId !== null,
+    enabled: !!actor && storyId !== null,
   });
 }
 
 export function useCallerStoryReaction(storyId: bigint | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<string | null>({
     queryKey: ["callerStoryReaction", storyId?.toString()],
     queryFn: async () => {
       if (!actor || storyId === null) return null;
       return actor.getCallerStoryReaction(storyId);
     },
-    enabled: !!actor && !isFetching && storyId !== null,
+    enabled: !!actor && storyId !== null,
   });
 }
 
@@ -800,26 +800,26 @@ export function useAddStoryReaction() {
 }
 
 export function useStoryViewCount(storyId: bigint | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<bigint>({
     queryKey: ["storyViewCount", storyId?.toString()],
     queryFn: async () => {
       if (!actor || storyId === null) return BigInt(0);
       return actor.getStoryViewCount(storyId);
     },
-    enabled: !!actor && !isFetching && storyId !== null,
+    enabled: !!actor && storyId !== null,
   });
 }
 
 export function useStoryViewers(storyId: bigint | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Profile[]>({
     queryKey: ["storyViewers", storyId?.toString()],
     queryFn: async () => {
       if (!actor || storyId === null) return [];
       return actor.getStoryViewers(storyId);
     },
-    enabled: !!actor && !isFetching && storyId !== null,
+    enabled: !!actor && storyId !== null,
   });
 }
 
@@ -835,26 +835,26 @@ export function useRecordStoryView() {
 
 // --- Profile Views ---
 export function useProfileViewCount() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<bigint>({
     queryKey: ["profileViewCount"],
     queryFn: async () => {
       if (!actor) return BigInt(0);
       return actor.getProfileViewCount();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }
 
 export function useProfileViewers() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Array<[Profile, bigint]>>({
     queryKey: ["profileViewers"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getProfileViewers();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }
 
@@ -870,14 +870,14 @@ export function useRecordProfileView() {
 
 // --- Super Like ---
 export function useHasSuperLiked(userId: Principal | null) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<boolean>({
     queryKey: ["hasSuperLiked", userId?.toString()],
     queryFn: async () => {
       if (!actor || !userId) return false;
       return actor.hasSuperLiked(userId);
     },
-    enabled: !!actor && !isFetching && !!userId,
+    enabled: !!actor && !!userId,
   });
 }
 
@@ -916,26 +916,26 @@ export function useUnsuperLikeUser() {
 }
 
 export function useSuperLikedBy() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Profile[]>({
     queryKey: ["superLikedBy"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getSuperLikedBy();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }
 
 export function useSuperLikeNotifications() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<import("../backend").SuperLikeNotification[]>({
     queryKey: ["superLikeNotifications"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getSuperLikeNotifications();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }
 
@@ -958,25 +958,25 @@ export function useSendGiftBackend() {
 }
 
 export function useGiftsSent() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery({
     queryKey: ["giftsSent"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getGiftsSent();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }
 
 export function useGiftsReceived() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery({
     queryKey: ["giftsReceived"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getGiftsReceived();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }

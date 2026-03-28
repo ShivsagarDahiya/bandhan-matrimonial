@@ -179,7 +179,6 @@ export function useIncomingCallPoller({
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const processedSignals = useRef<Set<string>>(new Set());
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: polling loop
   useEffect(() => {
     if (currentCallActive || !actor || mutualMatches.length === 0) {
       if (pollingRef.current) {

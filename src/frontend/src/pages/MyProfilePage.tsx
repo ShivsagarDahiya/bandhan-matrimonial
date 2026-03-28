@@ -19,6 +19,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   Camera,
+  Check,
+  Copy,
   Crown,
   Edit3,
   Eye,
@@ -26,16 +28,21 @@ import {
   Loader2,
   Lock,
   LogOut,
+  Moon,
+  NotebookPen,
   PhoneCall,
   Rocket,
   Save,
+  Share2,
   Shield,
   Star,
+  Sun,
   Upload,
   Users,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Gender } from "../backend";
 import GalleryLightbox from "../components/GalleryLightbox";
 import StoryViewerModal from "../components/StoryViewerModal";
@@ -137,16 +144,26 @@ interface MyProfilePageProps {
   onGoLive?: () => void;
   onSuggestions?: () => void;
   onGiftHistory?: () => void;
+  onLogout?: () => void;
 }
 export default function MyProfilePage({
   onCallHistory,
   onGoLive,
   onSuggestions,
   onGiftHistory,
+  onLogout,
 }: MyProfilePageProps) {
   const { data: profile, isLoading } = useCallerProfile();
   const createProfile = useCreateProfile();
-  const { clear: logout } = useInternetIdentity();
+  const { clear: iiLogout, identity } = useInternetIdentity();
+  const principalStr = identity?.getPrincipal().toString() ?? "";
+  const logout = () => {
+    if (onLogout) {
+      onLogout();
+    } else {
+      iiLogout();
+    }
+  };
   const { uploadFile, uploading } = useStorageUpload();
   const [editing, setEditing] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -173,6 +190,59 @@ export default function MyProfilePage({
   const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
   const [showBlocked, setShowBlocked] = useState(false);
 
+  // Availability status
+  const [availability, setAvailability] = useState<
+    "available" | "busy" | "break"
+  >(() => {
+    if (!profile) return "available";
+    return (
+      (localStorage.getItem(
+        `bandhan_availability_${profile?.userId?.toString() ?? ""}`,
+      ) as any) || "available"
+    );
+  });
+
+  // Notes to self
+  const [notes, setNotes] = useState(() => {
+    if (!profile) return "";
+    return (
+      localStorage.getItem(
+        `bandhan_notes_${profile?.userId?.toString() ?? ""}`,
+      ) || ""
+    );
+  });
+  const [showNotes, setShowNotes] = useState(false);
+  const [copiedPrincipal, setCopiedPrincipal] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem("bandhan_theme") !== "light";
+  });
+
+  const toggleTheme = () => {
+    const newDark = !darkMode;
+    setDarkMode(newDark);
+    localStorage.setItem("bandhan_theme", newDark ? "dark" : "light");
+    document.documentElement.style.setProperty(
+      "--bandhan-bg",
+      newDark ? "#0a0010" : "#1a0a2e",
+    );
+  };
+
+  const handleShare = async () => {
+    const text = `Check out ${p?.name ?? "this profile"} on Bandhan Matrimonial!`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Bandhan",
+          text,
+          url: window.location.href,
+        });
+      } catch {}
+    } else {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Profile link copied!");
+    }
+  };
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: profile.userId is sufficient
   useEffect(() => {
     if (!profile) return;
@@ -187,6 +257,11 @@ export default function MyProfilePage({
       const blocked = localStorage.getItem("bandhan_blocked");
       if (blocked) setBlockedUsers(JSON.parse(blocked));
     } catch {}
+    setAvailability(
+      (localStorage.getItem(`bandhan_availability_${uid}`) as any) ||
+        "available",
+    );
+    setNotes(localStorage.getItem(`bandhan_notes_${uid}`) || "");
   }, [profile?.userId]);
 
   const saveMood = (m: string) => {
@@ -208,6 +283,32 @@ export default function MyProfilePage({
       `bandhan_icebreakers_${profile.userId.toString()}`,
       JSON.stringify(ibs),
     );
+  };
+
+  const handleAvailabilityChange = (val: "available" | "busy" | "break") => {
+    if (!profile) return;
+    setAvailability(val);
+    localStorage.setItem(
+      `bandhan_availability_${profile.userId.toString()}`,
+      val,
+    );
+  };
+
+  const handleNotesChange = (val: string) => {
+    setNotes(val);
+    if (!profile) return;
+    localStorage.setItem(`bandhan_notes_${profile.userId.toString()}`, val);
+  };
+
+  const handleCopyPrincipal = async () => {
+    try {
+      await navigator.clipboard.writeText(principalStr);
+      setCopiedPrincipal(true);
+      toast.success("Principal ID copied!");
+      setTimeout(() => setCopiedPrincipal(false), 2000);
+    } catch {
+      toast.error("Could not copy");
+    }
   };
 
   const handleUnblock = (userId: string) => {
@@ -632,6 +733,38 @@ export default function MyProfilePage({
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>
+            {/* Dark/Light Mode Toggle */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              data-ocid="myprofile.toggle"
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{
+                background: "rgba(0,0,0,0.5)",
+                backdropFilter: "blur(8px)",
+              }}
+              title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {darkMode ? (
+                <Sun className="w-3.5 h-3.5 text-yellow-300" />
+              ) : (
+                <Moon className="w-3.5 h-3.5 text-blue-300" />
+              )}
+            </button>
+            {/* Share Profile */}
+            <button
+              type="button"
+              onClick={handleShare}
+              data-ocid="myprofile.secondary_button"
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{
+                background: "rgba(0,0,0,0.5)",
+                backdropFilter: "blur(8px)",
+              }}
+              title="Share profile"
+            >
+              <Share2 className="w-3.5 h-3.5 text-white/70" />
+            </button>
           </div>
           {/* Row 2: Go Live | Suggestions | Gift History */}
           {(onGoLive || onSuggestions || onGiftHistory) && (
@@ -690,17 +823,40 @@ export default function MyProfilePage({
               {p.name}, {Number(p.age)}
             </h1>
             <p className="text-white/60 text-sm">📍 {p.location}</p>
-            {localMood && (
+            <div className="flex items-center gap-2 mt-1.5">
+              {localMood && (
+                <span
+                  className="inline-flex items-center px-3 py-1 rounded-full text-xs text-white"
+                  style={{
+                    background: "oklch(0.65 0.22 10 / 0.5)",
+                    backdropFilter: "blur(4px)",
+                  }}
+                >
+                  {localMood}
+                </span>
+              )}
               <span
-                className="inline-flex items-center px-3 py-1 rounded-full text-xs text-white mt-1.5"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs text-white"
                 style={{
-                  background: "oklch(0.65 0.22 10 / 0.5)",
+                  background:
+                    availability === "available"
+                      ? "rgba(34,197,94,0.4)"
+                      : availability === "busy"
+                        ? "rgba(234,179,8,0.4)"
+                        : "rgba(239,68,68,0.4)",
                   backdropFilter: "blur(4px)",
                 }}
               >
-                {localMood}
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${availability === "available" ? "bg-green-400" : availability === "busy" ? "bg-yellow-400" : "bg-red-400"}`}
+                />
+                {availability === "available"
+                  ? "Available"
+                  : availability === "busy"
+                    ? "Busy"
+                    : "On a break"}
               </span>
-            )}
+            </div>
           </div>
         )}
       </div>
@@ -754,6 +910,154 @@ export default function MyProfilePage({
                 Add: {missingFields.join(", ")} to complete your profile
               </p>
             )}
+          </div>
+        )}
+
+        {/* Availability Status Selector */}
+        {p && !editing && (
+          <div
+            className="rounded-2xl p-4"
+            style={{
+              background: "oklch(0.13 0.05 300)",
+              border: "1px solid oklch(0.22 0.07 300)",
+            }}
+          >
+            <p className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-3">
+              🟢 Availability Status
+            </p>
+            <div className="flex gap-2">
+              {(
+                [
+                  {
+                    val: "available",
+                    label: "Available",
+                    dot: "bg-green-400",
+                    color: "rgba(34,197,94,0.35)",
+                  },
+                  {
+                    val: "busy",
+                    label: "Busy",
+                    dot: "bg-yellow-400",
+                    color: "rgba(234,179,8,0.35)",
+                  },
+                  {
+                    val: "break",
+                    label: "On a break",
+                    dot: "bg-red-400",
+                    color: "rgba(239,68,68,0.35)",
+                  },
+                ] as const
+              ).map(({ val, label, dot, color }) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => handleAvailabilityChange(val)}
+                  data-ocid="myprofile.toggle"
+                  className="flex-1 py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs font-medium text-white transition-all"
+                  style={{
+                    background:
+                      availability === val ? color : "oklch(0.18 0.05 300)",
+                    border:
+                      availability === val
+                        ? `1px solid ${color}`
+                        : "1px solid oklch(0.25 0.06 300)",
+                  }}
+                >
+                  <span className={`w-2 h-2 rounded-full ${dot}`} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Notes to Self */}
+        {p && (
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{
+              background: "oklch(0.13 0.05 300)",
+              border: "1px solid oklch(0.22 0.07 300)",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setShowNotes((v) => !v)}
+              data-ocid="myprofile.toggle"
+              className="w-full flex items-center justify-between px-4 py-3 text-white"
+            >
+              <div className="flex items-center gap-2">
+                <NotebookPen className="w-4 h-4" style={{ color: "#a78bfa" }} />
+                <span className="text-sm font-semibold">📝 Notes to Self</span>
+                <span
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-white/60"
+                  style={{ background: "oklch(0.2 0.06 280)" }}
+                >
+                  <Lock className="w-2.5 h-2.5" /> Private
+                </span>
+              </div>
+              <span className="text-white/40 text-xs">
+                {showNotes ? "▲" : "▼"}
+              </span>
+            </button>
+            {showNotes && (
+              <div className="px-4 pb-4">
+                <textarea
+                  value={notes}
+                  onChange={(e) => handleNotesChange(e.target.value)}
+                  placeholder="Write private notes to yourself... (only visible to you)"
+                  className="w-full bg-transparent text-white text-sm outline-none resize-none placeholder:text-white/30 min-h-[80px]"
+                  data-ocid="myprofile.textarea"
+                  style={{
+                    borderTop: "1px solid oklch(0.22 0.06 300)",
+                    paddingTop: "10px",
+                  }}
+                />
+                {notes && (
+                  <p className="text-white/30 text-[10px] mt-1 text-right">
+                    {notes.length} chars
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Copy Principal ID */}
+        {p && principalStr && (
+          <div
+            className="rounded-2xl p-4 flex items-center justify-between gap-3"
+            style={{
+              background: "oklch(0.13 0.05 300)",
+              border: "1px solid oklch(0.22 0.07 300)",
+            }}
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">
+                Your Principal ID
+              </p>
+              <p className="text-white/60 text-xs font-mono truncate">
+                {principalStr}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCopyPrincipal}
+              data-ocid="myprofile.button"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs text-white font-medium flex-shrink-0 transition-all active:scale-95"
+              style={{
+                background: copiedPrincipal
+                  ? "linear-gradient(135deg,#22c55e,#16a34a)"
+                  : "oklch(0.2 0.07 280)",
+              }}
+            >
+              {copiedPrincipal ? (
+                <Check className="w-3.5 h-3.5" />
+              ) : (
+                <Copy className="w-3.5 h-3.5" />
+              )}
+              {copiedPrincipal ? "Copied!" : "Copy"}
+            </button>
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import { MessageCircle } from "lucide-react";
+import { Bookmark, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import type { Profile } from "../backend";
 import { useMutualMatches, useSuperLikedBy } from "../hooks/useQueries";
@@ -6,6 +6,7 @@ import { useMutualMatches, useSuperLikedBy } from "../hooks/useQueries";
 interface Props {
   onOpenChat: (p: Profile) => void;
   onViewProfile?: (p: Profile) => void;
+  onFavorites?: () => void;
 }
 
 function matchAnniversaryBadge(profile: Profile): string | null {
@@ -24,18 +25,36 @@ function matchAnniversaryBadge(profile: Profile): string | null {
   return null;
 }
 
-export default function MatchesPage({ onOpenChat, onViewProfile }: Props) {
+export default function MatchesPage({
+  onOpenChat,
+  onViewProfile,
+  onFavorites,
+}: Props) {
   const { data: matches = [], isLoading } = useMutualMatches();
   const { data: superLikedBy = [] } = useSuperLikedBy();
   const [superLikedExpanded, setSuperLikedExpanded] = useState(true);
 
   return (
     <div className="min-h-screen pt-14 pb-4" style={{ background: "#0a0010" }}>
-      <div className="px-5 py-4">
-        <h1 className="text-2xl font-bold text-white">Your Matches</h1>
-        <p className="text-white/50 text-sm mt-1">
-          {matches.length} mutual matches
-        </p>
+      <div className="px-5 py-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Your Matches</h1>
+          <p className="text-white/50 text-sm mt-1">
+            {matches.length} mutual matches
+          </p>
+        </div>
+        {onFavorites && (
+          <button
+            type="button"
+            onClick={onFavorites}
+            data-ocid="matches.secondary_button"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm text-white font-medium"
+            style={{ background: "linear-gradient(135deg,#f59e0b,#d97706)" }}
+          >
+            <Bookmark className="w-4 h-4" />
+            Saved
+          </button>
+        )}
       </div>
 
       {/* Super Liked You section */}

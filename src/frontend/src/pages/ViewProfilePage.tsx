@@ -1,6 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   ArrowLeft,
+  Bookmark,
   Film,
   GraduationCap,
   Heart,
@@ -257,6 +258,28 @@ export default function ViewProfilePage({
   const { data: myProfile } = useCallerProfile();
   const { data: allStories = [] } = useStories();
   const [liked, setLiked] = useState(false);
+  const [bookmarked, setBookmarked] = useState(() => {
+    try {
+      const favs: string[] = JSON.parse(
+        localStorage.getItem("bandhan_favorites") || "[]",
+      );
+      return favs.includes(profile.userId.toString());
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleBookmark = () => {
+    try {
+      const favs: string[] = JSON.parse(
+        localStorage.getItem("bandhan_favorites") || "[]",
+      );
+      const uid = profile.userId.toString();
+      const next = bookmarked ? favs.filter((f) => f !== uid) : [...favs, uid];
+      localStorage.setItem("bandhan_favorites", JSON.stringify(next));
+      setBookmarked(!bookmarked);
+    } catch {}
+  };
   const [superLiked, setSuperLiked] = useState(false);
   const [mediaIdx, setMediaIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -733,6 +756,23 @@ export default function ViewProfilePage({
         >
           <Star
             className={`w-5 h-5 ${superLiked ? "fill-white text-white" : "text-yellow-400"}`}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={toggleBookmark}
+          data-ocid="viewprofile.toggle"
+          title={bookmarked ? "Remove bookmark" : "Bookmark profile"}
+          className="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-90"
+          style={{
+            background: bookmarked
+              ? "linear-gradient(135deg,#f59e0b,#d97706)"
+              : "oklch(0.18 0.05 300)",
+            border: bookmarked ? "none" : "1px solid oklch(0.3 0.07 300)",
+          }}
+        >
+          <Bookmark
+            className={`w-5 h-5 text-white ${bookmarked ? "fill-white" : ""}`}
           />
         </button>
         <button
