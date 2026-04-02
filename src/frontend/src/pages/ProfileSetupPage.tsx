@@ -314,6 +314,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your full name"
                 data-ocid="profile.input"
+                className="text-white"
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -326,6 +327,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                   min={18}
                   max={80}
                   data-ocid="profile.age.input"
+                  className="text-white"
                 />
               </Field>
               <Field label="Gender">
@@ -351,6 +353,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 placeholder="+91 9876543210"
                 type="tel"
                 data-ocid="profile.input"
+                className="text-white"
               />
             </Field>
             <Field label="Marital Status">
@@ -387,6 +390,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 onChange={(e) => setMotherTongue(e.target.value)}
                 placeholder="e.g. Hindi, Tamil..."
                 data-ocid="profile.input"
+                className="text-white"
               />
             </Field>
           </>
@@ -401,6 +405,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="Mumbai, India"
                 data-ocid="profile.location.input"
+                className="text-white"
               />
             </Field>
             <Field label="Height">
@@ -409,6 +414,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 onChange={(e) => setHeight(e.target.value)}
                 placeholder="5'8&quot;"
                 data-ocid="profile.input"
+                className="text-white"
               />
             </Field>
             <Field label="Occupation">
@@ -417,6 +423,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 onChange={(e) => setOccupation(e.target.value)}
                 placeholder="Software Engineer"
                 data-ocid="profile.input"
+                className="text-white"
               />
             </Field>
             <Field label="Education">
@@ -425,6 +432,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 onChange={(e) => setEducation(e.target.value)}
                 placeholder="B.Tech, MBA..."
                 data-ocid="profile.input"
+                className="text-white"
               />
             </Field>
           </>
@@ -440,7 +448,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 placeholder="Tell others about yourself..."
                 rows={3}
                 data-ocid="profile.textarea"
-                className="resize-none"
+                className="resize-none text-white"
               />
             </Field>
             <Field label="About Me">
@@ -450,7 +458,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 placeholder="What makes you unique..."
                 rows={3}
                 data-ocid="profile.textarea"
-                className="resize-none"
+                className="resize-none text-white"
               />
             </Field>
             <Field label="Thoughts / Life Philosophy">
@@ -459,6 +467,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                 onChange={(e) => setThoughts(e.target.value)}
                 placeholder="What do you believe in?"
                 data-ocid="profile.input"
+                className="text-white"
               />
             </Field>
             <Field label="Current Mood">
@@ -581,7 +590,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                   onKeyDown={(e) => e.key === "Enter" && addMovie()}
                   placeholder="Add a movie..."
                   data-ocid="profile.input"
-                  className="flex-1"
+                  className="flex-1 text-white"
                 />
                 <button
                   type="button"
@@ -626,7 +635,7 @@ export default function ProfileSetupPage({ onComplete }: Props) {
                   onKeyDown={(e) => e.key === "Enter" && addSong()}
                   placeholder="Add a song..."
                   data-ocid="profile.input"
-                  className="flex-1"
+                  className="flex-1 text-white"
                 />
                 <button
                   type="button"

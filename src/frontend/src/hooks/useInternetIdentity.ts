@@ -38,6 +38,7 @@ export type InternetIdentityContext = {
   loginError?: Error;
 };
 
+const ONE_HOUR_IN_NANOSECONDS = BigInt(3_600_000_000_000);
 const DEFAULT_IDENTITY_PROVIDER = process.env.II_URL;
 
 type ProviderValue = InternetIdentityContext;
@@ -61,14 +62,6 @@ export const useInternetIdentity = (): InternetIdentityContext => {
   return context;
 };
 
-function clearCorruptedTokens() {
-  const keys = Object.keys(localStorage).filter(
-    (k) =>
-      k.startsWith("ic-") || k.includes("delegation") || k.includes("identity"),
-  );
-  for (const k of keys) localStorage.removeItem(k);
-}
-
 export function InternetIdentityProvider({
   children,
   createOptions,
@@ -76,63 +69,71 @@ export function InternetIdentityProvider({
   children: ReactNode;
   createOptions?: AuthClientCreateOptions;
 }>) {
-  // authClient stored in ref so it never triggers re-renders or effect re-runs
+  // All mutable state that should NOT trigger re-initialization lives in refs
   const authClientRef = useRef<AuthClient | null>(null);
+  const derivationOriginRef = useRef<string | undefined>(undefined);
+  const createOptionsRef = useRef(createOptions);
   const initDoneRef = useRef(false);
 
   const [identity, setIdentity] = useState<Identity | undefined>(undefined);
   const [loginStatus, setStatus] = useState<Status>("initializing");
   const [loginError, setError] = useState<Error | undefined>(undefined);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs once on mount
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally empty — must run exactly once on mount
   useEffect(() => {
     if (initDoneRef.current) return;
     initDoneRef.current = true;
+
+    const opts = createOptionsRef.current;
 
     void (async () => {
       try {
         setStatus("initializing");
 
-        // Validate existing tokens; clear if corrupted
-        try {
-          const testKey = Object.keys(localStorage).find(
-            (k) => k.startsWith("ic-") || k.includes("delegation"),
-          );
-          if (testKey) {
-            const val = localStorage.getItem(testKey);
-            if (val) JSON.parse(val);
-          }
-        } catch {
-          clearCorruptedTokens();
-        }
+        const config = await loadConfig();
+        derivationOriginRef.current = config.ii_derivation_origin;
 
         const client = await AuthClient.create({
           idleOptions: {
             disableDefaultIdleCallback: true,
             disableIdle: true,
+            ...opts?.idleOptions,
           },
-          ...createOptions,
+          ...opts,
         });
         authClientRef.current = client;
 
-        let isAuth = false;
+        // Restore session; clear corrupted tokens gracefully
+        let isAuthenticated = false;
         try {
-          isAuth = await client.isAuthenticated();
+          isAuthenticated = await client.isAuthenticated();
         } catch {
-          // Corrupted session — clear storage and stay anonymous
-          clearCorruptedTokens();
-          isAuth = false;
+          // Corrupted delegation — wipe II storage and proceed unauthenticated
+          for (const key of Object.keys(localStorage)) {
+            if (
+              key.startsWith("ic-") ||
+              key.startsWith("delegation") ||
+              key.includes("identity")
+            ) {
+              localStorage.removeItem(key);
+            }
+          }
+          isAuthenticated = false;
         }
 
-        if (isAuth) {
+        if (isAuthenticated) {
           const loadedIdentity = client.getIdentity();
           setIdentity(loadedIdentity);
-          setStatus("success");
-        } else {
-          setStatus("idle");
         }
-      } catch {
+
         setStatus("idle");
+      } catch (unknownError) {
+        setError(
+          unknownError instanceof Error
+            ? unknownError
+            : new Error("Initialization failed"),
+        );
+        setStatus("loginError");
       }
     })();
   }, []);
@@ -141,53 +142,49 @@ export function InternetIdentityProvider({
     const client = authClientRef.current;
     if (!client) {
       setStatus("loginError");
-      setError(new Error("AuthClient not initialized yet"));
+      setError(new Error("AuthClient is not initialized yet"));
       return;
     }
 
-    setStatus("logging-in");
-
-    void (async () => {
-      try {
-        const config = await loadConfig();
-        const options: AuthClientLoginOptions = {
-          identityProvider: DEFAULT_IDENTITY_PROVIDER,
-          derivationOrigin: config.ii_derivation_origin,
-          maxTimeToLive: BigInt(3_600_000_000_000) * BigInt(24 * 30),
-          onSuccess: () => {
-            const newIdentity = client.getIdentity();
-            setIdentity(newIdentity);
-            setStatus("success");
-            setError(undefined);
-          },
-          onError: (err) => {
-            setStatus("loginError");
-            setError(new Error(err ?? "Login failed"));
-          },
-        };
-        await client.login(options);
-      } catch (e) {
+    const options: AuthClientLoginOptions = {
+      identityProvider: DEFAULT_IDENTITY_PROVIDER,
+      derivationOrigin: derivationOriginRef.current,
+      onSuccess: () => {
+        const latestIdentity = client.getIdentity();
+        setIdentity(latestIdentity);
+        setStatus("success");
+        setError(undefined);
+      },
+      onError: (maybeError?: string) => {
         setStatus("loginError");
-        setError(e instanceof Error ? e : new Error("Login failed"));
-      }
-    })();
+        setError(new Error(maybeError ?? "Login failed"));
+      },
+      maxTimeToLive: ONE_HOUR_IN_NANOSECONDS * BigInt(24 * 30),
+    };
+
+    setStatus("logging-in");
+    void client.login(options);
   }, []);
 
   const clear = useCallback(() => {
     const client = authClientRef.current;
     if (!client) return;
+
     void client
       .logout()
       .then(() => {
+        // Clear identity/status only — keep client ref alive to prevent re-init
         setIdentity(undefined);
         setStatus("idle");
         setError(undefined);
-        // Do NOT clear authClientRef — that would re-trigger init
       })
-      .catch(() => {
-        setIdentity(undefined);
-        setStatus("idle");
-        setError(undefined);
+      .catch((unknownError: unknown) => {
+        setStatus("loginError");
+        setError(
+          unknownError instanceof Error
+            ? unknownError
+            : new Error("Logout failed"),
+        );
       });
   }, []);
 

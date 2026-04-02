@@ -1582,6 +1582,7 @@ export default function MyProfilePage({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <div className="grid grid-cols-2 gap-3">
@@ -1591,6 +1592,7 @@ export default function MyProfilePage({
                   value={age}
                   onChange={(e) => setAge(e.target.value)}
                   data-ocid="myprofile.input"
+                  className="text-white"
                 />
               </F>
               <F label="Gender">
@@ -1616,6 +1618,7 @@ export default function MyProfilePage({
                 placeholder="+91 9876543210"
                 type="tel"
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Religion">
@@ -1623,6 +1626,7 @@ export default function MyProfilePage({
                 value={religion}
                 onChange={(e) => setReligion(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Location">
@@ -1630,6 +1634,7 @@ export default function MyProfilePage({
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Occupation">
@@ -1637,6 +1642,7 @@ export default function MyProfilePage({
                 value={occupation}
                 onChange={(e) => setOccupation(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Height">
@@ -1644,6 +1650,7 @@ export default function MyProfilePage({
                 value={height}
                 onChange={(e) => setHeight(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Mother Tongue">
@@ -1651,6 +1658,7 @@ export default function MyProfilePage({
                 value={motherTongue}
                 onChange={(e) => setMotherTongue(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Marital Status">
@@ -1658,6 +1666,7 @@ export default function MyProfilePage({
                 value={maritalStatus}
                 onChange={(e) => setMaritalStatus(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Education">
@@ -1665,6 +1674,7 @@ export default function MyProfilePage({
                 value={education}
                 onChange={(e) => setEducation(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Bio">
@@ -1673,7 +1683,7 @@ export default function MyProfilePage({
                 onChange={(e) => setBio(e.target.value)}
                 rows={3}
                 data-ocid="myprofile.textarea"
-                className="resize-none"
+                className="resize-none text-white"
               />
             </F>
             <F label="About Me">
@@ -1682,7 +1692,7 @@ export default function MyProfilePage({
                 onChange={(e) => setAboutMe(e.target.value)}
                 rows={3}
                 data-ocid="myprofile.textarea"
-                className="resize-none"
+                className="resize-none text-white"
               />
             </F>
             <F label="Thoughts">
@@ -1690,6 +1700,7 @@ export default function MyProfilePage({
                 value={thoughts}
                 onChange={(e) => setThoughts(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Mood (backend field)">
@@ -1697,6 +1708,7 @@ export default function MyProfilePage({
                 value={mood}
                 onChange={(e) => setMood(e.target.value)}
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
 
@@ -1805,6 +1817,7 @@ export default function MyProfilePage({
                       }}
                       placeholder="Your answer..."
                       data-ocid="myprofile.input"
+                      className="text-white"
                     />
                   </div>
                 ))}
@@ -1882,6 +1895,7 @@ export default function MyProfilePage({
                   )
                 }
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             <F label="Favorite Songs (comma separated)">
@@ -1896,6 +1910,7 @@ export default function MyProfilePage({
                   )
                 }
                 data-ocid="myprofile.input"
+                className="text-white"
               />
             </F>
             {/* Media upload grid */}

@@ -89,7 +89,6 @@ export default function App() {
 
   const handleLogout = useCallback(() => {
     iiClear();
-    setCurrentPage("browse");
   }, [iiClear]);
 
   const [currentPage, setCurrentPage] = useState<Page>("browse");
